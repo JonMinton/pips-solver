@@ -23,8 +23,8 @@ def main(argv=None) -> int:
     if args.debug:
         d = res.debug
         print(f"[debug] separator row={d['separator']} pitch={d['pitch']} "
-              f"grid={d['grid'][0]}x{d['grid'][1]} "
-              f"regions={d['n_regions']} free-cells={d['n_free']}")
+              f"clusters={d['n_clusters']} regions={d['n_regions']} "
+              f"free-regions={d['n_free']}")
         for bbox, desc, rid in d["tags"]:
             print(f"[debug] tag {bbox} -> {desc!r} -> region {rid}")
         print()

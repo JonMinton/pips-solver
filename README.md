@@ -16,18 +16,21 @@ This project has two parts.
 A classical computer-vision pipeline (no ML, no network):
 
 1. find the thin separator rule between the board and the domino tray;
-2. recover the cell **pitch** from the periodic inter-cell valleys
-   (autocorrelation — scale-robust) and lock the lattice **phase** by
-   maximising solid-tile coverage, so it handles irregular polyomino
-   boards;
+2. split the board into its disconnected **clusters** (a hard puzzle is
+   several independent pieces that are *not* on a shared lattice),
+   recover the cell **pitch** from the periodic inter-cell valleys
+   (autocorrelation — scale-robust) and lock each cluster's lattice
+   **phase** independently by maximising solid-tile coverage;
 3. classify each lattice slot by colour (white = hole, a warm low-chroma
-   beige = a free cell, otherwise a coloured region) and cluster the
-   region colours;
+   beige = a free cell, otherwise a coloured region) and segment regions
+   as connected components of equal-colour cells (so same-colour regions
+   that are spatially apart stay distinct);
 4. detect the saturated tag markers, isolate and recognise each white
-   constraint glyph against a template library, and attach it to its
-   region using the fact that a region's fill is its tag colour
-   alpha-blended over beige (so the fill lies on the segment
-   `[beige, tag colour]`);
+   constraint glyph against a template library, and assign tags to
+   regions optimally (Hungarian) on a cost that combines the
+   `[beige, tag colour]` blend-line residual with spatial proximity —
+   colour separates differently-hued neighbours, proximity separates
+   regions that share a tag colour;
 5. read the tray by counting pip blobs in each half-tile.
 
 The glyph templates are built once from the screenshots by
@@ -49,21 +52,24 @@ the search both exact and fast.
 pip install -r requirements.txt
 python solve.py example-screenshots/easy-example.png --debug
 python solve.py example-screenshots/medium-example.png
+python solve.py example-screenshots/hard-example.png
 pytest -q                       # end-to-end acceptance tests
 ```
 
 ## Status
 
-Validated end to end against both example screenshots
-(`tests/test_examples.py`): the parser reads the exact board, every
-constraint and every domino, and the solver returns an **independently
-verified** energy-0 solution (`verify_solution` re-checks tiling, the
-domino multiset and all constraints). Solve time is sub-millisecond
-(easy) to ~20 ms (medium); parsing a screenshot takes a couple of seconds.
+Validated end to end against all three example screenshots —
+easy (8 cells / 4 dominoes), medium (14 / 7) and hard (a 7-piece
+disconnected board, 28 cells / 14 dominoes, 19 regions). For each one the
+parser reads the exact board, every constraint and every domino, and the
+solver returns an **independently verified** energy-0 solution
+(`verify_solution` re-checks tiling, the domino multiset and all
+constraints — see `tests/test_examples.py`). Solve time is a few
+milliseconds; parsing a screenshot takes a couple of seconds.
 
 ### Scope / extending
 
-The template library currently covers the glyphs present in the two
-example screenshots (`5 6 8 9 < = ≠`). Other digits or `>` would just
-need adding to `tools/build_templates.py` and rebuilding. The CV
+The glyph template library is built from the example screenshots and
+covers `0`–`9` (those that appear), `< > =` and `≠`. New glyphs just
+need adding to `tools/build_templates.py` and a rebuild. The CV
 thresholds assume the standard NYT Pips rendering.

@@ -20,13 +20,16 @@ from typing import Dict, List, Tuple
 import numpy as np
 from PIL import Image
 from scipy import ndimage
+from scipy.optimize import linear_sum_assignment
 
 from .glyphs import GlyphRecognizer, isolate_glyph
 from .model import Constraint, ConstraintKind, Puzzle, Region
 
 WHITE = 245       # min channel >= WHITE  -> background / hole
 TAG_SAT = 80      # max-min saturation above this -> a vivid tag marker
-CLUSTER_T = 26.0  # RGB distance for grouping region colours
+SAME_REGION_T = 30.0  # max RGB gap between adjacent cells of one region
+COLOR_TOL = 42.0      # max residual to the [beige, tag] colour segment
+                      # (coarse hue filter; spatial proximity disambiguates)
 
 
 @dataclass
@@ -101,17 +104,6 @@ def _seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
     return float(np.linalg.norm(p - (a + t * ab)))
 
 
-def _cluster_colors(colors: List[np.ndarray]) -> List[np.ndarray]:
-    reps: List[np.ndarray] = []
-    for c in colors:
-        for i, r in enumerate(reps):
-            if np.linalg.norm(c - r) < CLUSTER_T:
-                break
-        else:
-            reps.append(c.copy())
-    return reps
-
-
 def _parse_dominoes(a: np.ndarray, s: int) -> List[Tuple[int, int]]:
     tray = a[s + 3:]
     gray = tray.mean(axis=2)
@@ -158,77 +150,114 @@ def parse(path: str, debug: bool = False) -> ParseResult:
     poly = (~white) & board
 
     # pitch from the periodic inter-cell valleys (scale-robust)
-    cy0 = poly & (sat <= TAG_SAT)
-    ys, xs = np.where(cy0)
+    ys, xs = np.where(poly & (sat <= TAG_SAT))
     pitch = _pitch(poly, lum, (xs.min(), ys.min(), xs.max(), ys.max()))
     rad = max(8, int(pitch * 0.30))
-
-    # generous search box (tags/holes will just score low and be trimmed)
-    pys, pxs = np.where(poly)
-    Y0, Y1, X0, X1 = pys.min(), pys.max(), pxs.min(), pxs.max()
-    n_r = (Y1 - Y0) // pitch + 2
-    n_c = (X1 - X0) // pitch + 2
-
-    # ---- lock the lattice phase by maximising tile coverage -------------
-    best = (-1.0, 0, 0)
     step = max(2, pitch // 26)
-    for oy in range(0, pitch, step):
-        for ox in range(0, pitch, step):
-            score = 0.0
-            for i in range(n_r):
-                cyy = Y0 + oy + int((i + 0.5) * pitch)
-                if cyy > Y1 + pitch:
-                    break
-                for j in range(n_c):
-                    cxx = X0 + ox + int((j + 0.5) * pitch)
-                    if cxx > X1 + pitch:
-                        break
-                    wf, cov, _ = _slot(a, cyy, cxx, rad)
-                    if _is_cell(wf, cov):
-                        score += cov
-            if score > best[0]:
-                best = (score, ox, oy)
-    _, ox, oy = best
+
+    # A Pips board can be several disconnected pieces, each in its own
+    # rounded container and *not* on a shared lattice.  Detect the pieces
+    # (connected components of the board, dashed gaps bridged) and fit a
+    # lattice to each one separately.
+    blob = ndimage.binary_dilation(poly, iterations=3)
+    clab, cn = ndimage.label(blob)
+    csz = ndimage.sum(np.ones_like(clab), clab, range(1, cn + 1))
+    clusters = [i + 1 for i, v in enumerate(csz) if v > 4000]
 
     raw: Dict[Tuple[int, int], np.ndarray] = {}
-    for i in range(n_r):
-        cyy = Y0 + oy + int((i + 0.5) * pitch)
-        for j in range(n_c):
-            cxx = X0 + ox + int((j + 0.5) * pitch)
-            wf, cov, dom = _slot(a, cyy, cxx, rad)
-            if _is_cell(wf, cov):
-                raw[(i, j)] = dom
+    xy: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    GAP = 1000  # keeps cluster coordinate spaces non-adjacent
 
-    # re-index so the grid starts at (0, 0)
-    r_min = min(r for r, _ in raw)
-    c_min = min(c for _, c in raw)
-    raw = {(r - r_min, c - c_min): v for (r, c), v in raw.items()}
+    for k, ci in enumerate(clusters):
+        cm = (clab == ci) & poly
+        cys, cxs = np.where(cm)
+        bx0, bx1, by0, by1 = cxs.min(), cxs.max(), cys.min(), cys.max()
+        n_r = (by1 - by0) // pitch + 2
+        n_c = (bx1 - bx0) // pitch + 2
+
+        def cell_at(cyy, cxx):
+            if not (by0 <= cyy <= by1 and bx0 <= cxx <= bx1):
+                return None
+            if clab[cyy, cxx] != ci:        # must be inside *this* piece
+                return None
+            wf, cov, dom = _slot(a, cyy, cxx, rad)
+            if not _is_cell(wf, cov) or dom.max() - dom.min() > 100:
+                return None  # white/gap/mixed, or a saturated tag marker
+            return dom
+
+        best = (-1.0, 0, 0)
+        for oy in range(0, pitch, step):
+            for ox in range(0, pitch, step):
+                score = 0.0
+                for i in range(n_r):
+                    cyy = by0 + oy + int((i + 0.5) * pitch)
+                    for j in range(n_c):
+                        cxx = bx0 + ox + int((j + 0.5) * pitch)
+                        if cell_at(cyy, cxx) is not None:
+                            score += 1
+                if score > best[0]:
+                    best = (score, ox, oy)
+        _, ox, oy = best
+
+        local = {}
+        for i in range(n_r):
+            cyy = by0 + oy + int((i + 0.5) * pitch)
+            for j in range(n_c):
+                cxx = bx0 + ox + int((j + 0.5) * pitch)
+                dom = cell_at(cyy, cxx)
+                if dom is not None:
+                    local[(i, j)] = (dom, (cxx, cyy))
+        if not local:
+            continue
+        rmn = min(r for r, _ in local)
+        cmn = min(c for _, c in local)
+        for (i, j), (dom, ctr) in local.items():
+            key = (k * GAP + i - rmn, j - cmn)
+            raw[key] = dom
+            xy[key] = ctr
 
     cells = sorted(raw.keys())
-    reps = _cluster_colors([raw[c] for c in cells])
 
-    def cluster_of(col: np.ndarray) -> int:
-        return int(np.argmin([np.linalg.norm(col - r) for r in reps]))
+    # ---- regions: connected components of equal-colour cells ------------
+    # (handles same-colour regions that are spatially apart, and the
+    # disconnected board clusters of hard puzzles)
+    region_of: Dict[Tuple[int, int], int] = {}
+    rid = 0
+    for start in cells:
+        if start in region_of:
+            continue
+        stack = [start]
+        region_of[start] = rid
+        while stack:
+            r, c = stack.pop()
+            for nb in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+                if (nb in raw and nb not in region_of
+                        and np.linalg.norm(raw[nb] - raw[(r, c)])
+                        < SAME_REGION_T):
+                    region_of[nb] = rid
+                    stack.append(nb)
+        rid += 1
 
-    region_of: Dict[Tuple[int, int], int] = {c: cluster_of(raw[c])
-                                              for c in cells}
-    # a cluster is "free" (no constraint) when it is warm and low-chroma
-    free_clusters = {
-        rid for rid, r in enumerate(reps)
+    rids = sorted(set(region_of.values()))
+    rep = {k: np.mean([raw[c] for c in cells if region_of[c] == k], axis=0)
+           for k in rids}
+    # a region with no constraint tag is warm, bright and low-chroma
+    free = {
+        k for k, r in rep.items()
         if (r[0] >= r[2] - 4) and (r.max() - r.min() < 30) and r.min() > 170
     }
 
     # ---- tags & constraints --------------------------------------------
-    # A region's fill is its tag colour alpha-blended over the cell's beige
-    # base.  So the fill lies on the segment [base, tag_colour]; we attach
-    # each tag to the region whose colour sits closest to that segment.
-    free_cell_cols = [raw[c] for c in cells if region_of[c] in free_clusters]
-    base = (np.mean(free_cell_cols, axis=0) if free_cell_cols
+    # A region's fill is its tag colour alpha-blended over a beige base, so
+    # it sits on the segment [base, tag_colour]; combine that colour test
+    # with spatial proximity (multiple regions can share a tag colour).
+    free_cols = [raw[c] for c in cells if region_of[c] in free]
+    base = (np.mean(free_cols, axis=0) if free_cols
             else np.array([220.0, 204.0, 196.0]))
 
     rec = GlyphRecognizer()
     tlab, tn = ndimage.label((sat > TAG_SAT) & board)
-    found = []  # (constraint, solid_colour, bbox)
+    found = []  # (constraint, solid_colour, (cx, cy), bbox)
     for t in range(1, tn + 1):
         tys, txs = np.where(tlab == t)
         if tys.size < 800:
@@ -237,49 +266,54 @@ def parse(path: str, debug: bool = False) -> ParseResult:
         pad = 4
         Y0, Y1 = max(0, ty0 - pad), min(H, ty1 + pad + 1)
         X0, X1 = max(0, tx0 - pad), min(W, tx1 + pad + 1)
-        crop = a[Y0:Y1, X0:X1]
-        tmask = tlab[Y0:Y1, X0:X1] == t
-        cons = rec.recognize(isolate_glyph(crop, tmask))
+        cons = rec.recognize(
+            isolate_glyph(a[Y0:Y1, X0:X1], tlab[Y0:Y1, X0:X1] == t))
         solid = np.median(a[tlab == t], axis=0)
-        found.append((cons, solid, (tx0, ty0, tx1, ty1)))
+        found.append((cons, solid, (txs.mean(), tys.mean()),
+                      (tx0, ty0, tx1, ty1)))
 
-    constrained = [rid for rid in range(len(reps))
-                   if rid not in free_clusters]
-    pairs = []
-    for ti, (cons, solid, _) in enumerate(found):
-        for rid in constrained:
-            pairs.append((_seg_dist(reps[rid], base, solid), ti, rid))
-    pairs.sort()
+    # Optimal tag<->region assignment.  Cost combines the colour residual
+    # to the [beige, tag] blend line with the spatial gap from the tag to
+    # the region (in pitch units).  Colour separates differently-hued
+    # neighbours; proximity separates regions that share a tag colour.
+    constrained = [k for k in rids if k not in free]
+    cost = np.full((len(found), len(constrained)), 1e6)
+    for ti, (_, solid, (tcx, tcy), _) in enumerate(found):
+        for ki, k in enumerate(constrained):
+            cres = _seg_dist(rep[k], base, solid)
+            if cres > COLOR_TOL:
+                continue                      # different hue -> forbidden
+            d = min(((xy[c][0] - tcx) ** 2 + (xy[c][1] - tcy) ** 2) ** 0.5
+                    for c in cells if region_of[c] == k)
+            cost[ti, ki] = cres + 10.0 * (d / pitch)
     constraints: Dict[int, Constraint] = {}
     tag_region: Dict[int, int] = {}
-    used_t, used_r = set(), set()
-    for _, ti, rid in pairs:
-        if ti in used_t or rid in used_r:
-            continue
-        constraints[rid] = found[ti][0]
-        tag_region[ti] = rid
-        used_t.add(ti)
-        used_r.add(rid)
+    if found and constrained:
+        rows, cidx = linear_sum_assignment(cost)
+        for ti, ki in zip(rows, cidx):
+            if cost[ti, ki] < 1e6:
+                constraints[constrained[ki]] = found[ti][0]
+                tag_region[ti] = constrained[ki]
     tag_dbg = [
-        (found[ti][2], found[ti][0].describe(), tag_region.get(ti))
+        (found[ti][3], found[ti][0].describe(), tag_region.get(ti))
         for ti in range(len(found))
     ]
 
     regions: Dict[int, Region] = {}
-    for rid in set(region_of.values()):
-        cons = constraints.get(rid, Constraint(ConstraintKind.NONE))
-        member = [c for c in cells if region_of[c] == rid]
-        regions[rid] = Region(
-            rid=rid, constraint=cons, cells=member,
-            color=tuple(int(v) for v in reps[rid]),
+    for k in rids:
+        regions[k] = Region(
+            rid=k, constraint=constraints.get(k, Constraint(ConstraintKind.NONE)),
+            cells=[c for c in cells if region_of[c] == k],
+            color=tuple(int(v) for v in rep[k]),
         )
 
     dominoes = _parse_dominoes(a, s)
     puzzle = Puzzle(cells=cells, region_of=region_of,
                     regions=regions, dominoes=dominoes)
 
-    gr = (max(r for r, _ in cells) + 1, max(c for _, c in cells) + 1)
-    dbg = dict(separator=s, pitch=pitch, grid=gr, phase=(ox, oy),
+    from .render import render_puzzle
+    dbg = dict(separator=s, pitch=pitch, n_clusters=len(clusters),
                tags=tag_dbg, base=tuple(int(v) for v in base),
-               n_free=len(free_clusters), n_regions=len(reps))
+               n_free=len(free), n_regions=len(rids),
+               ascii=render_puzzle(puzzle))
     return ParseResult(puzzle=puzzle, debug=dbg)

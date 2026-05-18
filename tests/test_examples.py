@@ -45,7 +45,8 @@ MEDIUM = dict(
     dominoes=Counter([(4, 3), (5, 5), (3, 2), (5, 3), (4, 0), (6, 6), (0, 3)]),
     constraints=Counter({
         (ConstraintKind.ALL_EQUAL, None, 3): 1,
-        (ConstraintKind.NONE, None, 3): 1,
+        (ConstraintKind.NONE, None, 2): 1,    # r2c0 + r3c0 (adjacent)
+        (ConstraintKind.NONE, None, 1): 1,    # r0c5 (separate)
         (ConstraintKind.ALL_DIFFERENT, None, 3): 1,
         (ConstraintKind.ALL_EQUAL, None, 2): 1,
         (ConstraintKind.SUM_EQ, 8, 2): 1,
@@ -54,7 +55,32 @@ MEDIUM = dict(
 )
 
 
-@pytest.mark.parametrize("case", [EASY, MEDIUM], ids=["easy", "medium"])
+HARD = dict(
+    path="hard-example.png",
+    n_cells=28,
+    dominoes=Counter([(5, 3), (5, 2), (4, 4), (0, 0), (6, 3), (1, 0),
+                      (4, 0), (6, 2), (5, 5), (4, 6), (2, 1), (3, 3),
+                      (0, 6), (2, 3)]),
+    constraints=Counter({
+        (ConstraintKind.ALL_EQUAL, None, 3): 1,
+        (ConstraintKind.NONE, None, 1): 4,
+        (ConstraintKind.SUM_EQ, 3, 1): 3,
+        (ConstraintKind.SUM_EQ, 7, 2): 1,
+        (ConstraintKind.SUM_EQ, 7, 3): 1,
+        (ConstraintKind.SUM_EQ, 11, 2): 1,
+        (ConstraintKind.SUM_EQ, 14, 3): 1,
+        (ConstraintKind.SUM_GT, 1, 1): 1,
+        (ConstraintKind.SUM_GT, 2, 1): 2,
+        (ConstraintKind.SUM_GT, 4, 1): 1,
+        (ConstraintKind.SUM_GT, 11, 2): 1,
+        (ConstraintKind.SUM_LT, 2, 1): 2,
+    }),
+)
+
+ALL = [EASY, MEDIUM, HARD]
+
+
+@pytest.mark.parametrize("case", ALL, ids=["easy", "medium", "hard"])
 def test_parse(case):
     p = parse_screenshot(_shot(case["path"]))
     assert len(p.cells) == case["n_cells"]
@@ -65,7 +91,7 @@ def test_parse(case):
     assert _constraint_multiset(p) == case["constraints"]
 
 
-@pytest.mark.parametrize("case", [EASY, MEDIUM], ids=["easy", "medium"])
+@pytest.mark.parametrize("case", ALL, ids=["easy", "medium", "hard"])
 def test_solve(case):
     p = parse_screenshot(_shot(case["path"]))
     sol = solve(p)

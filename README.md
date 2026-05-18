@@ -3,6 +3,13 @@
 Solve [NYT Pips](https://www.nytimes.com/games/pips) puzzles directly from a
 screenshot — no manual transcription.
 
+**▶ Live web app: https://jonminton.github.io/pips-solver/**
+Pick today's Easy / Medium / Hard puzzle, upload a screenshot, or paste an
+image URL; it shows the parsed board, the dominoes, the solution and the
+parse/solve times. The browser runs the *unmodified* Python parser and
+solver via [Pyodide](https://pyodide.org) — no server, identical results
+to the CLI.
+
 A Pips puzzle is a constrained-optimisation problem: an irregular board of
 cells, grouped into coloured regions each carrying a constraint (a target
 sum, `<N`/`>N`, "all equal" `=`, or "all different" `≠`), must be fully
@@ -45,6 +52,14 @@ walks domino tilings depth-first and keeps an *admissible lower bound* on
 the energy each region can still reach given the cells already filled; a
 branch is pruned the moment any region can no longer reach 0. This makes
 the search both exact and fast.
+
+### 3. Web app — `docs/` (GitHub Pages)
+
+`docs/` is a static site that loads Pyodide, pulls in numpy/scipy/Pillow
+and the `pips` package, and calls `pips.webapi.run` in the browser.
+Rebuild its assets after changing `pips/` with
+`python tools/build_web.py`. Pages serves `main:/docs`; a `.nojekyll`
+file keeps `_glyph_templates.json` from being dropped by Jekyll.
 
 ## Usage
 

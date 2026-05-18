@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pips Solver</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Pips&nbsp;Solver</h1>
+  <p class="sub">
+    Parse a <a href="https://www.nytimes.com/games/pips" target="_blank"
+    rel="noopener">NYT&nbsp;Pips</a> screenshot and solve it &mdash; the
+    real Python computer-vision parser and energy-model solver, running
+    entirely in your browser via Pyodide (no server).
+  </p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1 &middot; Choose a puzzle</h2>
+    <p class="daily">Today&rsquo;s puzzles
+      &mdash; <span id="date"></span>:</p>
+    <div class="row">
+      <button class="puz" data-puz="easy"   disabled>Easy</button>
+      <button class="puz" data-puz="medium" disabled>Medium</button>
+      <button class="puz" data-puz="hard"   disabled>Hard</button>
+    </div>
+    <div class="row">
+      <label class="filebtn">
+        Upload screenshot&hellip;
+        <input type="file" id="file" accept="image/*" disabled>
+      </label>
+    </div>
+    <div class="row">
+      <input type="url" id="url" placeholder="https://&hellip; image URL"
+             disabled>
+      <button id="loadurl" disabled>Load URL</button>
+    </div>
+    <p class="hint">URL loading needs the image host to allow
+      cross-origin requests; if it fails, download the image and use
+      &ldquo;Upload screenshot&rdquo;.</p>
+  </section>
+
+  <section class="card" id="statuscard">
+    <h2>Status</h2>
+    <p id="status">Booting Python runtime (numpy, scipy, Pillow) &mdash;
+      the first load downloads ~25&nbsp;MB and can take ~30&nbsp;s&hellip;</p>
+    <div id="badges" class="badges hidden">
+      <span class="badge" id="b-parse"></span>
+      <span class="badge" id="b-solve"></span>
+      <span class="badge" id="b-grid"></span>
+      <span class="badge ok" id="b-verified"></span>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Input</h2>
+      <img id="preview" alt="puzzle screenshot will appear here">
+    </section>
+    <section class="card">
+      <h2>Parsed board &amp; dominoes</h2>
+      <pre id="parsed">&mdash;</pre>
+    </section>
+    <section class="card">
+      <h2>Solution</h2>
+      <pre id="solution">&mdash;</pre>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <a href="https://github.com/JonMinton/pips-solver" target="_blank"
+     rel="noopener">source on GitHub</a>
+  &middot; classical CV &middot; energy-model exact solver
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

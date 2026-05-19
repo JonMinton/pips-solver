@@ -4,11 +4,12 @@ Solve [NYT Pips](https://www.nytimes.com/games/pips) puzzles directly from a
 screenshot — no manual transcription.
 
 **▶ Live web app: https://jonminton.github.io/pips-solver/**
-Pick today's Easy / Medium / Hard puzzle, upload a screenshot, or paste an
-image URL; it shows the parsed board, the dominoes, the solution and the
-parse/solve times. The browser runs the *unmodified* Python parser and
-solver via [Pyodide](https://pyodide.org) — no server, identical results
-to the CLI.
+Pick Easy / Medium / Hard / Hard·Day 2, upload a screenshot, or paste an
+image URL; it shows the parsed board, the dominoes, the parse/solve times,
+and a **graphical solution** — the solved board drawn as an SVG where each
+domino is a rounded tile, blue for horizontal and orange for vertical. The
+browser runs the *unmodified* Python parser and solver via
+[Pyodide](https://pyodide.org) — no server, identical results to the CLI.
 
 A Pips puzzle is a constrained-optimisation problem: an irregular board of
 cells, grouped into coloured regions each carrying a constraint (a target
@@ -73,14 +74,15 @@ pytest -q                       # end-to-end acceptance tests
 
 ## Status
 
-Validated end to end against all three example screenshots —
-easy (8 cells / 4 dominoes), medium (14 / 7) and hard (a 7-piece
-disconnected board, 28 cells / 14 dominoes, 19 regions). For each one the
-parser reads the exact board, every constraint and every domino, and the
-solver returns an **independently verified** energy-0 solution
-(`verify_solution` re-checks tiling, the domino multiset and all
-constraints — see `tests/test_examples.py`). Solve time is a few
-milliseconds; parsing a screenshot takes a couple of seconds.
+Validated end to end against four example screenshots —
+easy (8 cells / 4 dominoes), medium (14 / 7), hard (a 7-piece
+disconnected board, 28 / 14, 19 regions) and a second hard puzzle
+(2 pieces, 26 / 13). For each one the parser reads the exact board,
+every constraint and every domino, and the solver returns an
+**independently verified** energy-0 solution (`verify_solution`
+re-checks tiling, the domino multiset and all constraints — see
+`tests/test_examples.py`, 12 tests). Solve time is a few milliseconds;
+parsing a screenshot takes a couple of seconds.
 
 ### Scope / extending
 

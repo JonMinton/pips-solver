@@ -77,10 +77,28 @@ HARD = dict(
     }),
 )
 
-ALL = [EASY, MEDIUM, HARD]
+HARD2 = dict(
+    path="hard-example-2.png",
+    n_cells=26,
+    dominoes=Counter([(0, 1), (1, 1), (1, 2), (1, 3), (1, 5), (2, 2),
+                      (3, 3), (3, 5), (4, 4), (4, 5), (4, 6), (5, 6),
+                      (6, 6)]),
+    constraints=Counter({
+        (ConstraintKind.ALL_EQUAL, None, 4): 2,
+        (ConstraintKind.NONE, None, 1): 1,
+        (ConstraintKind.SUM_EQ, 2, 2): 1,
+        (ConstraintKind.SUM_EQ, 8, 2): 2,
+        (ConstraintKind.SUM_EQ, 9, 2): 2,
+        (ConstraintKind.SUM_EQ, 9, 3): 2,
+        (ConstraintKind.SUM_GT, 0, 1): 1,
+    }),
+)
+
+ALL = [EASY, MEDIUM, HARD, HARD2]
+IDS = ["easy", "medium", "hard", "hard2"]
 
 
-@pytest.mark.parametrize("case", ALL, ids=["easy", "medium", "hard"])
+@pytest.mark.parametrize("case", ALL, ids=IDS)
 def test_parse(case):
     p = parse_screenshot(_shot(case["path"]))
     assert len(p.cells) == case["n_cells"]
@@ -91,10 +109,27 @@ def test_parse(case):
     assert _constraint_multiset(p) == case["constraints"]
 
 
-@pytest.mark.parametrize("case", ALL, ids=["easy", "medium", "hard"])
+@pytest.mark.parametrize("case", ALL, ids=IDS)
 def test_solve(case):
     p = parse_screenshot(_shot(case["path"]))
     sol = solve(p)
     assert sol is not None
     assert sol.energy == 0
     verify_solution(p, sol)
+
+
+@pytest.mark.parametrize("case", ALL, ids=IDS)
+def test_layout(case):
+    from pips.render import solution_layout
+    p = parse_screenshot(_shot(case["path"]))
+    sol = solve(p)
+    lay = solution_layout(p, sol)
+    assert lay["n_h"] + lay["n_v"] == len(p.dominoes)
+    seen = 0
+    for cl in lay["clusters"]:
+        for pl in cl["placements"]:
+            assert pl["orient"] in ("H", "V")
+        for cell in cl["cells"]:
+            assert cell["val"] is not None  # solved board has every value
+            seen += 1
+    assert seen == len(p.cells)

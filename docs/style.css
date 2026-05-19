@@ -50,6 +50,16 @@ pre{
   ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   background:#faf8f5;border-radius:8px;padding:12px;max-height:520px;
 }
+.legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;
+  margin:0 0 12px;font-size:13px;color:var(--ink)}
+.legend .muted{color:var(--muted)}
+.legend .sw{display:inline-block;width:22px;height:13px;border-radius:4px;
+  vertical-align:-2px;margin-right:6px;background:#fbfbfb}
+.legend .sw.h{border:2.5px solid #2f6f9f}
+.legend .sw.v{border:2.5px solid #c8762a}
+#svgwrap{overflow:auto}
+#svgwrap svg{max-width:100%;height:auto;background:#faf8f5;
+  border-radius:8px;padding:10px}
 footer{max-width:1100px;margin:0 auto;padding:0 20px 40px;
   color:var(--muted);font-size:13px}
 footer a{color:var(--accent)}

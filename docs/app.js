@@ -62,6 +62,16 @@ async function solveBytes(u8, previewBlobType) {
 
     $("parsed").textContent = res.parsed;
     $("solution").textContent = res.solution;
+    try {
+      $("svgwrap").innerHTML = buildSVG(res.layout);
+      $("lh").textContent = res.layout.n_h;
+      $("lv").textContent = res.layout.n_v;
+      $("legend").classList.remove("hidden");
+    } catch (e) {
+      $("svgwrap").innerHTML =
+        '<p class="muted">(graphical view unavailable)</p>';
+      console.error(e);
+    }
     $("b-parse").textContent = "parse " + res.parse_ms + " ms";
     $("b-solve").textContent = "solve " + res.solve_ms + " ms";
     $("b-grid").textContent =
@@ -85,6 +95,68 @@ async function solveBytes(u8, previewBlobType) {
   }
 }
 
+function buildSVG(layout) {
+  const CS = 46, INS = 5, PAD = 14, GY = 26;
+  const H_COL = "#2f6f9f", V_COL = "#c8762a";
+  let totalW = 0, totalH = PAD;
+  const offsets = [];
+  for (const cl of layout.clusters) {
+    const w = (cl.maxc - cl.minc + 1) * CS;
+    const h = (cl.maxr - cl.minr + 1) * CS;
+    offsets.push(totalH);
+    totalH += h + GY;
+    totalW = Math.max(totalW, w);
+  }
+  totalH += PAD - GY;
+  totalW += 2 * PAD;
+
+  const parts = [`<svg viewBox="0 0 ${totalW} ${totalH}" ` +
+    `xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,` +
+    `Menlo,Consolas,monospace">`];
+
+  layout.clusters.forEach((cl, ci) => {
+    const oy = offsets[ci];
+    const cx = (c) => PAD + (c - cl.minc) * CS;
+    const cy = (r) => oy + (r - cl.minr) * CS;
+
+    for (const cell of cl.cells) {
+      const [r, g, b] = cell.color;
+      parts.push(`<rect x="${cx(cell.c)}" y="${cy(cell.r)}" ` +
+        `width="${CS}" height="${CS}" rx="7" ` +
+        `fill="rgb(${r},${g},${b})" fill-opacity="0.55" ` +
+        `stroke="#e3ddd5"/>`);
+    }
+
+    for (const p of cl.placements) {
+      const horiz = p.orient === "H";
+      const r0 = Math.min(p.a[0], p.b[0]), c0 = Math.min(p.a[1], p.b[1]);
+      const x = cx(c0) + INS, y = cy(r0) + INS;
+      const w = (horiz ? 2 : 1) * CS - 2 * INS;
+      const h = (horiz ? 1 : 2) * CS - 2 * INS;
+      const col = horiz ? H_COL : V_COL;
+      parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" ` +
+        `rx="9" fill="#fdfdfb" fill-opacity="0.65" stroke="${col}" ` +
+        `stroke-width="3"/>`);
+      if (horiz)
+        parts.push(`<line x1="${x + w / 2}" y1="${y + 4}" ` +
+          `x2="${x + w / 2}" y2="${y + h - 4}" stroke="${col}" ` +
+          `stroke-width="1.5" stroke-dasharray="3 3"/>`);
+      else
+        parts.push(`<line x1="${x + 4}" y1="${y + h / 2}" ` +
+          `x2="${x + w - 4}" y2="${y + h / 2}" stroke="${col}" ` +
+          `stroke-width="1.5" stroke-dasharray="3 3"/>`);
+      const put = (cc, rr, val) => parts.push(
+        `<text x="${cx(cc) + CS / 2}" y="${cy(rr) + CS / 2}" ` +
+        `font-size="20" font-weight="700" fill="#26211d" ` +
+        `text-anchor="middle" dominant-baseline="central">${val}</text>`);
+      put(p.a[1], p.a[0], p.va);
+      put(p.b[1], p.b[0], p.vb);
+    }
+  });
+  parts.push("</svg>");
+  return parts.join("");
+}
+
 async function loadFromFetch(path) {
   setStatus("Fetching " + path + " …");
   const buf = await (await fetch(path)).arrayBuffer();
@@ -94,8 +166,7 @@ async function loadFromFetch(path) {
 for (const btn of document.querySelectorAll("button.puz")) {
   btn.addEventListener("click", async () => {
     try {
-      const u8 = await loadFromFetch("puzzles/" + btn.dataset.puz +
-        "-example.png");
+      const u8 = await loadFromFetch("puzzles/" + btn.dataset.file);
       await solveBytes(u8);
     } catch (e) { setStatus("Could not load puzzle: " + e); }
   });

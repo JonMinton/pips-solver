@@ -23,9 +23,10 @@
     <p class="daily">Today&rsquo;s puzzles
       &mdash; <span id="date"></span>:</p>
     <div class="row">
-      <button class="puz" data-puz="easy"   disabled>Easy</button>
-      <button class="puz" data-puz="medium" disabled>Medium</button>
-      <button class="puz" data-puz="hard"   disabled>Hard</button>
+      <button class="puz" data-file="easy-example.png"   disabled>Easy</button>
+      <button class="puz" data-file="medium-example.png" disabled>Medium</button>
+      <button class="puz" data-file="hard-example.png"   disabled>Hard</button>
+      <button class="puz" data-file="hard-example-2.png"  disabled>Hard&nbsp;&middot;&nbsp;Day&nbsp;2</button>
     </div>
     <div class="row">
       <label class="filebtn">
@@ -55,6 +56,18 @@
     </div>
   </section>
 
+  <section class="card">
+    <h2>Solution &mdash; graphical</h2>
+    <div id="legend" class="legend hidden">
+      <span><i class="sw h"></i> horizontal domino
+        (<b id="lh">0</b>)</span>
+      <span><i class="sw v"></i> vertical domino
+        (<b id="lv">0</b>)</span>
+      <span class="muted">cell tint = region · number = pip value</span>
+    </div>
+    <div id="svgwrap"><p class="muted">&mdash;</p></div>
+  </section>
+
   <div class="grid">
     <section class="card">
       <h2>Input</h2>
@@ -65,7 +78,7 @@
       <pre id="parsed">&mdash;</pre>
     </section>
     <section class="card">
-      <h2>Solution</h2>
+      <h2>Solution &mdash; text</h2>
       <pre id="solution">&mdash;</pre>
     </section>
   </div>

@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 
 from .parser import parse
-from .render import render_puzzle, render_solution
+from .render import render_puzzle, render_solution, solution_layout
 from .solver import solve, verify_solution
 
 INPUT_PATH = "/tmp/in.png"
@@ -34,6 +34,7 @@ def run(path: str = INPUT_PATH) -> dict:
     return {
         "parsed": render_puzzle(p),
         "solution": render_solution(p, sol),
+        "layout": solution_layout(p, sol),
         "parse_ms": round((t1 - t0) * 1000, 1),
         "solve_ms": round((t2 - t1) * 1000, 1),
         "solved": sol is not None and sol.energy == 0,

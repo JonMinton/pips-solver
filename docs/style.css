@@ -60,6 +60,20 @@ pre{
 #svgwrap{overflow:auto}
 #svgwrap svg{max-width:100%;height:auto;background:#faf8f5;
   border-radius:8px;padding:10px}
+.nav{max-width:1100px;margin:6px 0 0;font-size:14px}
+.nav a{color:var(--accent);text-decoration:none;font-weight:600}
+.nav a:hover{text-decoration:underline}
+.prose{max-width:820px}
+.prose .card h3{margin:18px 0 4px;font-size:15px;color:var(--ink);
+  text-transform:none;letter-spacing:0}
+.prose p{margin:.5em 0;color:var(--ink)}
+.prose code{background:#efe9f5;color:#5a3d86;border-radius:4px;
+  padding:1px 5px;font-size:.92em}
+.prose table{border-collapse:collapse;width:100%;margin:6px 0;
+  font-size:14px}
+.prose th,.prose td{border:1px solid var(--line);padding:6px 10px;
+  text-align:left}
+.prose th{background:#faf8f5;color:var(--muted);font-weight:600}
 footer{max-width:1100px;margin:0 auto;padding:0 20px 40px;
   color:var(--muted);font-size:13px}
 footer a{color:var(--accent)}

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pips Solver — how it works</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>How it works</h1>
+  <p class="sub">The problems that came up building the
+    <a href="index.html">Pips Solver</a>, and how each was solved &mdash;
+    the image parser first, then the energy-model solver, then getting it
+    all to run in a browser.</p>
+  <nav class="nav"><a href="index.html">&larr; back to the solver</a></nav>
+</header>
+
+<main class="prose">
+
+  <section class="card">
+    <h2>The challenge</h2>
+    <p>A <a href="https://www.nytimes.com/games/pips" target="_blank"
+      rel="noopener">NYT&nbsp;Pips</a> puzzle is an irregular board of
+      cells grouped into coloured <em>regions</em>, each carrying a
+      constraint (a target sum, <code>&lt;N</code>/<code>&gt;N</code>,
+      &ldquo;all&nbsp;equal&rdquo; <code>=</code>, or
+      &ldquo;all&nbsp;different&rdquo; <code>&ne;</code>). You must tile
+      every cell with a given multiset of dominoes so all constraints
+      hold. Two distinct problems: <strong>read the puzzle out of a
+      screenshot</strong>, and <strong>solve the
+      constraint problem</strong>. The parser turned out to be the harder
+      half. No machine learning and no network calls are used &mdash;
+      just classical computer vision.</p>
+  </section>
+
+  <section class="card">
+    <h2>Part 1 &middot; Parsing the screenshot</h2>
+
+    <h3>Finding the cell grid</h3>
+    <p><strong>Problem:</strong> cells sit on a square lattice, but the
+      pixel size of a cell differs between screenshots, and the board is
+      an arbitrary polyomino, not a full rectangle.</p>
+    <p><strong>Solution:</strong> the cell <em>pitch</em> is recovered
+      from the periodic dip in brightness at the thin gaps between cells
+      &mdash; an autocorrelation of that signal gives the period
+      regardless of image scale. The lattice <em>phase</em> is then
+      locked by sliding the grid and maximising how much solid cell-tile
+      it covers, which works on any polyomino shape.</p>
+
+    <h3>Cell vs. hole vs. background</h3>
+    <p><strong>Problem:</strong> a lattice slot may be a coloured region
+      cell, a neutral &ldquo;free&rdquo; cell, an empty hole, or just the
+      beige board frame. The free-cell beige and the frame beige differ
+      by only ~14 in RGB, so a colour threshold was hopelessly fragile
+      (it kept dropping free cells or inventing phantom ones).</p>
+    <p><strong>Solution:</strong> stop using a background colour at all.
+      A real cell is a large, <em>uniform</em> tile that fills its slot;
+      a non-cell is white, or a thin strip of frame. So a slot is a cell
+      iff a single dominant colour covers most of its area &mdash; a
+      structural test that treats free and region cells identically and
+      needs no fragile colour reference.</p>
+
+    <h3>Disconnected boards (the hard puzzles)</h3>
+    <p><strong>Problem:</strong> hard puzzles are several separate board
+      pieces scattered across the canvas, and the pieces are <em>not</em>
+      aligned to one shared lattice &mdash; a single global grid missed
+      most cells.</p>
+    <p><strong>Solution:</strong> split the board into connected
+      components and fit a lattice phase to <em>each piece
+      independently</em> (the pitch is global, the phase is per-piece).
+      Slot sampling is restricted to the piece being processed so a tight
+      gap between two pieces can&rsquo;t bleed one into the other. Each
+      piece gets its own coordinate band so dominoes can never wrongly
+      bridge a gap.</p>
+
+    <h3>Which cells form a region</h3>
+    <p><strong>Problem:</strong> clustering every cell colour globally
+      merged genuinely separate regions that happened to share a hue
+      (e.g. three different purple regions on one board).</p>
+    <p><strong>Solution:</strong> a region is a <em>connected component
+      of equal-colour cells</em> on the lattice. Same-coloured regions
+      that are spatially apart stay distinct, which is exactly the game&rsquo;s
+      own rule.</p>
+
+    <h3>Matching a constraint tag to its region</h3>
+    <p><strong>Problem:</strong> the little constraint markers are very
+      saturated, while a region&rsquo;s fill is a pale, desaturated tint
+      &mdash; matching by raw colour failed, and several regions can
+      share a tag colour. Nearest-cell matching swapped tags between
+      neighbouring regions.</p>
+    <p><strong>Solution:</strong> a region&rsquo;s fill is its tag colour
+      alpha-blended over beige, so the fill lies on the line segment
+      between &ldquo;beige&rdquo; and &ldquo;tag colour&rdquo;. Tags are
+      assigned to regions by an <em>optimal (Hungarian) assignment</em>
+      on a cost that combines that colour-blend residual with spatial
+      proximity: colour separates differently-hued neighbours, proximity
+      separates regions that share a colour.</p>
+
+    <h3>Reading the constraint text</h3>
+    <p><strong>Problem:</strong> the white glyph (a number, or
+      <code>=</code>/<code>&ne;</code>/<code>&lt;</code>/<code>&gt;</code>)
+      is punched out of the solid tag, and small built-in OCR was
+      unreliable on it. The <code>=</code> symbol&rsquo;s bars even reach
+      the tag edge, defeating naive flood-fill isolation.</p>
+    <p><strong>Solution:</strong> recover the solid tag shape by
+      morphologically closing its colour mask (this re-seals the punched
+      text), and the glyph is then the bright pixels inside it. Split
+      that into characters by column gaps and classify each against a
+      small template library built once from real screenshots
+      (<code>tools/build_templates.py</code>). New glyphs &mdash;
+      <code>&gt;</code>, the digit <code>0</code> from a
+      &ldquo;<code>&gt;0</code>&rdquo; tag, multi-digit numbers like
+      <code>11</code>/<code>14</code> &mdash; were added by labelling
+      them from new screenshots as they appeared.</p>
+  </section>
+
+  <section class="card">
+    <h2>Part 2 &middot; Solving with an energy model</h2>
+    <p><strong>Problem:</strong> a brute-force tiling search is
+      astronomically large, yet the answer must be exact &mdash; a
+      &ldquo;nearly right&rdquo; board is wrong.</p>
+    <p><strong>Solution:</strong> every region constraint contributes an
+      <em>energy</em> that is zero exactly when satisfied and grows with
+      the distance to satisfaction (see <code>Constraint.violation</code>).
+      A valid solution is an assignment of total energy&nbsp;0. The solver
+      walks domino tilings depth-first, but for each region it keeps an
+      <em>admissible lower bound</em> on the energy still reachable given
+      the cells already filled (a partly-filled sum region can only land
+      in a known window of totals; an &ldquo;all-equal&rdquo; /
+      &ldquo;all-different&rdquo; region can only get worse). The branch
+      is pruned the instant any region can no longer reach&nbsp;0. That
+      makes the search both <strong>exact</strong> and fast &mdash;
+      milliseconds even for the 28-cell hard board.</p>
+    <p>Because a found solution is only as trustworthy as the parse,
+      <code>verify_solution</code> independently re-checks the result
+      from scratch: every cell covered exactly once, each pair of cells
+      orthogonally adjacent, the domino multiset used exactly, and every
+      constraint satisfied at energy&nbsp;0. Nothing is reported as
+      &ldquo;solved&rdquo; unless it passes that.</p>
+  </section>
+
+  <section class="card">
+    <h2>Part 3 &middot; Running it in a browser</h2>
+    <p><strong>Problem:</strong> the parser/solver are Python
+      (NumPy/SciPy/Pillow), but GitHub Pages only serves static files
+      &mdash; no server to run Python on.</p>
+    <p><strong>Solution:</strong> <a href="https://pyodide.org"
+      target="_blank" rel="noopener">Pyodide</a> runs CPython compiled to
+      WebAssembly in the browser. The page loads NumPy, SciPy and Pillow,
+      writes the <em>unmodified</em> <code>pips</code> package into the
+      virtual filesystem, and calls it directly &mdash; so results are
+      byte-identical to the command line. One sharp edge: GitHub Pages
+      runs Jekyll, which silently drops files beginning with
+      <code>_</code> &mdash; including the glyph-template file. A
+      <code>.nojekyll</code> marker disables that.</p>
+    <p>The solution is also drawn graphically as an SVG: region-tinted
+      cells, with each domino as a rounded tile &mdash; blue and wide for
+      horizontal, orange and tall for vertical &mdash; so the placement
+      and orientation are obvious at a glance.</p>
+  </section>
+
+  <section class="card">
+    <h2>Where it stands</h2>
+    <table>
+      <thead><tr><th>Puzzle</th><th>Cells</th><th>Dominoes</th>
+        <th>Regions</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Easy</td><td>8</td><td>4</td><td>4</td>
+          <td>verified energy&nbsp;0</td></tr>
+        <tr><td>Medium</td><td>14</td><td>7</td><td>7</td>
+          <td>verified energy&nbsp;0</td></tr>
+        <tr><td>Hard (7 pieces)</td><td>28</td><td>14</td><td>19</td>
+          <td>verified energy&nbsp;0</td></tr>
+        <tr><td>Hard &middot; Day&nbsp;2</td><td>26</td><td>13</td>
+          <td>11</td><td>verified energy&nbsp;0</td></tr>
+      </tbody>
+    </table>
+    <p>Each is parsed exactly &mdash; board shape, every constraint,
+      every domino &mdash; and solved with an independently verified
+      zero-energy solution; 12 end-to-end tests guard against
+      regressions. Solving is a few milliseconds; parsing a screenshot
+      takes a couple of seconds (most of it Pyodide&rsquo;s one-time
+      runtime download).</p>
+  </section>
+
+</main>
+
+<footer>
+  <a href="https://github.com/JonMinton/pips-solver" target="_blank"
+     rel="noopener">source on GitHub</a> &middot;
+  <a href="index.html">try the solver</a>
+</footer>
+</body>
+</html>

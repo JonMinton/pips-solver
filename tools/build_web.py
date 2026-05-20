@@ -16,7 +16,8 @@ PKG_FILES = [
     "glyphs.py", "render.py", "webapi.py", "_glyph_templates.json",
 ]
 PUZZLES = ["easy-example.png", "medium-example.png",
-           "hard-example.png", "hard-example-2.png"]
+           "hard-example.png", "hard-example-2.png",
+           "hard-example-3.png"]
 
 
 def main() -> None:

@@ -73,6 +73,19 @@
       gap between two pieces can&rsquo;t bleed one into the other. Each
       piece gets its own coordinate band so dominoes can never wrongly
       bridge a gap.</p>
+    <p>A subtle case: two pieces sometimes share a single rounded
+      container drawn around both, with only a thin beige rim joining
+      them &mdash; visually disconnected but pixel-connected. Eroding
+      the board mask by ~12 px before labelling strips that thin rim
+      (and the thin inter-cell gaps), so cluster IDs always come from a
+      cell-bearing core. A cell tile is ~80 px on a side and easily
+      survives the erosion.</p>
+    <p>The same approach also forces the pitch-detection autocorrelation
+      to prefer the <em>fundamental</em> period rather than a harmonic:
+      the smallest lag whose autocorrelation is within 80% of the peak
+      wins, so the parser doesn&rsquo;t accidentally lock onto 2&times;
+      the true pitch on puzzles where every other row happens to look
+      similar.</p>
 
     <h3>Which cells form a region</h3>
     <p><strong>Problem:</strong> clustering every cell colour globally
@@ -174,6 +187,8 @@
           <td>verified energy&nbsp;0</td></tr>
         <tr><td>Hard &middot; Day&nbsp;2</td><td>26</td><td>13</td>
           <td>11</td><td>verified energy&nbsp;0</td></tr>
+        <tr><td>Hard &middot; Day&nbsp;3</td><td>30</td><td>15</td>
+          <td>12</td><td>verified energy&nbsp;0</td></tr>
       </tbody>
     </table>
     <p>Each is parsed exactly &mdash; board shape, every constraint,

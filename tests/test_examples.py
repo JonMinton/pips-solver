@@ -94,8 +94,28 @@ HARD2 = dict(
     }),
 )
 
-ALL = [EASY, MEDIUM, HARD, HARD2]
-IDS = ["easy", "medium", "hard", "hard2"]
+HARD3 = dict(
+    path="hard-example-3.png",
+    n_cells=30,
+    dominoes=Counter([(0, 1), (0, 2), (0, 3), (0, 4), (1, 4), (1, 5),
+                      (1, 6), (2, 2), (2, 3), (2, 6), (3, 4), (4, 5),
+                      (4, 6), (5, 5), (6, 6)]),
+    constraints=Counter({
+        (ConstraintKind.ALL_DIFFERENT, None, 6): 1,
+        (ConstraintKind.ALL_EQUAL, None, 3): 2,
+        (ConstraintKind.ALL_EQUAL, None, 4): 1,
+        (ConstraintKind.SUM_EQ, 0, 1): 1,
+        (ConstraintKind.SUM_EQ, 0, 3): 1,
+        (ConstraintKind.SUM_EQ, 1, 1): 1,
+        (ConstraintKind.SUM_EQ, 2, 2): 1,
+        (ConstraintKind.SUM_EQ, 7, 2): 1,
+        (ConstraintKind.SUM_EQ, 12, 2): 2,
+        (ConstraintKind.SUM_GT, 2, 1): 1,
+    }),
+)
+
+ALL = [EASY, MEDIUM, HARD, HARD2, HARD3]
+IDS = ["easy", "medium", "hard", "hard2", "hard3"]
 
 
 @pytest.mark.parametrize("case", ALL, ids=IDS)

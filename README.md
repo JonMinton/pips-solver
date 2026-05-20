@@ -74,14 +74,15 @@ pytest -q                       # end-to-end acceptance tests
 
 ## Status
 
-Validated end to end against four example screenshots —
+Validated end to end against five example screenshots —
 easy (8 cells / 4 dominoes), medium (14 / 7), hard (a 7-piece
-disconnected board, 28 / 14, 19 regions) and a second hard puzzle
-(2 pieces, 26 / 13). For each one the parser reads the exact board,
-every constraint and every domino, and the solver returns an
-**independently verified** energy-0 solution (`verify_solution`
+disconnected board, 28 / 14, 19 regions), a second hard puzzle
+(2 pieces, 26 / 13), and a third hard puzzle (2 pieces sharing a single
+container rim, 30 / 15, 12 regions). For each one the parser reads the
+exact board, every constraint and every domino, and the solver returns
+an **independently verified** energy-0 solution (`verify_solution`
 re-checks tiling, the domino multiset and all constraints — see
-`tests/test_examples.py`, 12 tests). Solve time is a few milliseconds;
+`tests/test_examples.py`, 15 tests). Solve time is a few milliseconds;
 parsing a screenshot takes a couple of seconds.
 
 ### Scope / extending

@@ -63,13 +63,24 @@ def _find_separator(a: np.ndarray) -> int:
 
 def _pitch(poly: np.ndarray, lum: np.ndarray,
            bbox: Tuple[int, int, int, int]) -> int:
+    """Cell pitch in px.
+
+    Autocorrelation has peaks at the fundamental period *and* every
+    harmonic (2p, 3p, ...).  The fundamental is what we want, so return
+    the smallest lag whose autocorr value is within 80% of the maximum.
+    """
     x0, y0, x1, y1 = bbox
     valley = ((_local_max(lum, 9) - lum > 4) & poly).astype(float)
     sig = valley[y0:y1 + 1, x0:x1 + 1].sum(axis=0)
     sig = sig - sig.mean()
     ac = np.correlate(sig, sig, "full")[len(sig) - 1:]
-    ac[:40] = -1e18
-    return int(np.argmax(ac[: max(41, len(ac) // 1)]))
+    lo, hi = 40, min(len(ac) - 1, 240)
+    peak = float(ac[lo:hi + 1].max())
+    thresh = 0.80 * peak
+    for L in range(lo, hi + 1):
+        if ac[L] >= thresh and ac[L] >= ac[L - 1] and ac[L] >= ac[L + 1]:
+            return L
+    return int(np.argmax(ac[lo:hi + 1])) + lo
 
 
 def _slot(a: np.ndarray, cy: int, cx: int, r: int):
@@ -155,14 +166,20 @@ def parse(path: str, debug: bool = False) -> ParseResult:
     rad = max(8, int(pitch * 0.30))
     step = max(2, pitch // 26)
 
-    # A Pips board can be several disconnected pieces, each in its own
-    # rounded container and *not* on a shared lattice.  Detect the pieces
-    # (connected components of the board, dashed gaps bridged) and fit a
-    # lattice to each one separately.
-    blob = ndimage.binary_dilation(poly, iterations=3)
-    clab, cn = ndimage.label(blob)
+    # A Pips board can be several disconnected pieces.  Two pieces
+    # sometimes share a thin beige rim/bridge, which makes the poly
+    # mask connected even though no dominoes can cross.  Erode the poly
+    # mask by ~12 px to strip thin rims/bridges; cell tiles (~80 px)
+    # easily survive, so cluster IDs come from a cell-bearing core.
+    eroded = ndimage.binary_erosion(poly, iterations=12)
+    clab, cn = ndimage.label(eroded)
     csz = ndimage.sum(np.ones_like(clab), clab, range(1, cn + 1))
-    clusters = [i + 1 for i, v in enumerate(csz) if v > 4000]
+    big = [i + 1 for i, v in enumerate(csz) if v > 2000]
+    lut = np.zeros(cn + 1, dtype=np.int64)
+    for new_id, old_id in enumerate(big, start=1):
+        lut[old_id] = new_id
+    clab = lut[clab]
+    clusters = list(range(1, len(big) + 1))
 
     raw: Dict[Tuple[int, int], np.ndarray] = {}
     xy: Dict[Tuple[int, int], Tuple[int, int]] = {}

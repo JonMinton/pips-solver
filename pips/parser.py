@@ -74,7 +74,7 @@ def _pitch(poly: np.ndarray, lum: np.ndarray,
     sig = valley[y0:y1 + 1, x0:x1 + 1].sum(axis=0)
     sig = sig - sig.mean()
     ac = np.correlate(sig, sig, "full")[len(sig) - 1:]
-    lo, hi = 40, min(len(ac) - 1, 240)
+    lo, hi = 28, min(len(ac) - 1, 240)
     peak = float(ac[lo:hi + 1].max())
     thresh = 0.80 * peak
     for L in range(lo, hi + 1):
@@ -115,12 +115,32 @@ def _seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
     return float(np.linalg.norm(p - (a + t * ab)))
 
 
-def _parse_dominoes(a: np.ndarray, s: int) -> List[Tuple[int, int]]:
+def _scaled(pitch: int) -> dict:
+    """Pixel thresholds that scale with the detected cell pitch.
+
+    All other constants (saturation, RGB distances, white cutoff) are
+    colour properties of the rendering, not dimensions, so they stay
+    fixed; everything below depends on how many pixels a cell occupies.
+    """
+    p2 = pitch * pitch
+    return {
+        "tag_min": max(120, int(0.06 * p2)),     # min tag-marker area
+        "erode_n": max(3, pitch // 8),           # cluster-splitting radius
+        "cluster_min": max(400, int(0.18 * p2)),
+        "tile_min": max(600, int(0.30 * p2)),    # domino-tile non-bg area
+        "pip_min": max(3, int(p2 / 400.0)),      # one pip-dot area
+        "valley_k": max(5, pitch // 11),         # luminance local-max kernel
+        "inner_m": max(3, pitch // 16),          # domino half inner margin
+    }
+
+
+def _parse_dominoes(a: np.ndarray, s: int, pitch: int) -> List[Tuple[int, int]]:
+    th = _scaled(pitch)
     tray = a[s + 3:]
     gray = tray.mean(axis=2)
     lab, n = ndimage.label(gray < 248)
     sizes = ndimage.sum(np.ones_like(lab), lab, range(1, n + 1))
-    tiles = [i + 1 for i, v in enumerate(sizes) if v > 3000]
+    tiles = [i + 1 for i, v in enumerate(sizes) if v > th["tile_min"]]
     tiles.sort(key=lambda i: (np.where(lab == i)[1].min()))
     dominoes: List[Tuple[int, int]] = []
     for i in tiles:
@@ -134,11 +154,11 @@ def _parse_dominoes(a: np.ndarray, s: int) -> List[Tuple[int, int]]:
             halves = [sub[: h // 2, :], sub[h // 2:, :]]
         counts = []
         for half in halves:
-            m = 6
+            m = th["inner_m"]
             inner = half[m:-m, m:-m] if min(half.shape) > 2 * m else half
             pl, pn = ndimage.label(inner < 110)
             psz = ndimage.sum(np.ones_like(pl), pl, range(1, pn + 1))
-            counts.append(int(sum(1 for v in psz if v > 25)))
+            counts.append(int(sum(1 for v in psz if v > th["pip_min"])))
         dominoes.append((counts[0], counts[1]))
     return dominoes
 
@@ -171,10 +191,11 @@ def parse(path: str, debug: bool = False) -> ParseResult:
     # mask connected even though no dominoes can cross.  Erode the poly
     # mask by ~12 px to strip thin rims/bridges; cell tiles (~80 px)
     # easily survive, so cluster IDs come from a cell-bearing core.
-    eroded = ndimage.binary_erosion(poly, iterations=12)
+    th = _scaled(pitch)
+    eroded = ndimage.binary_erosion(poly, iterations=th["erode_n"])
     clab, cn = ndimage.label(eroded)
     csz = ndimage.sum(np.ones_like(clab), clab, range(1, cn + 1))
-    big = [i + 1 for i, v in enumerate(csz) if v > 2000]
+    big = [i + 1 for i, v in enumerate(csz) if v > th["cluster_min"]]
     lut = np.zeros(cn + 1, dtype=np.int64)
     for new_id, old_id in enumerate(big, start=1):
         lut[old_id] = new_id
@@ -277,7 +298,7 @@ def parse(path: str, debug: bool = False) -> ParseResult:
     found = []  # (constraint, solid_colour, (cx, cy), bbox)
     for t in range(1, tn + 1):
         tys, txs = np.where(tlab == t)
-        if tys.size < 800:
+        if tys.size < th["tag_min"]:
             continue
         ty0, ty1, tx0, tx1 = tys.min(), tys.max(), txs.min(), txs.max()
         pad = 4
@@ -324,7 +345,7 @@ def parse(path: str, debug: bool = False) -> ParseResult:
             color=tuple(int(v) for v in rep[k]),
         )
 
-    dominoes = _parse_dominoes(a, s)
+    dominoes = _parse_dominoes(a, s, pitch)
     puzzle = Puzzle(cells=cells, region_of=region_of,
                     regions=regions, dominoes=dominoes)
 

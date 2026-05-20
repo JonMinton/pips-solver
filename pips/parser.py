@@ -115,6 +115,104 @@ def _seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
     return float(np.linalg.norm(p - (a + t * ab)))
 
 
+def _locate_puzzle(a: np.ndarray):
+    """Find the puzzle (board + domino tray) inside a full screenshot.
+
+    Phone screenshots wrap the puzzle in app/browser chrome.  The board
+    is always a rounded warm-beige container that stands out clearly
+    from neutral grey UI; the tray sits directly below it.  Returns the
+    bounding box ``(x0, y0, x1, y1)`` to crop to, or ``None`` if the
+    image is already tight (so the caller leaves it alone).
+    """
+    H, W, _ = a.shape
+    R, B = a[..., 0], a[..., 2]
+    mn = a.min(axis=2); sat = a.max(axis=2) - mn
+    warm = (R - B > 8) & (sat < 50) & (mn > 150) & (mn < 240)
+    lab, n = ndimage.label(warm)
+    if n == 0:
+        return None
+    sizes = ndimage.sum(np.ones_like(lab), lab, range(1, n + 1))
+    biggest = float(sizes.max())
+    # only count the board containers (large warm components)
+    boards = [i + 1 for i, v in enumerate(sizes)
+              if v >= max(2000, 0.10 * biggest)]
+    bmask = np.isin(lab, boards)
+    bys, bxs = np.where(bmask)
+    by0, by1 = int(bys.min()), int(bys.max())
+    bx0, bx1 = int(bxs.min()), int(bxs.max())
+    bh = by1 - by0
+
+    # if the warm region already fills most of the image, no crop needed
+    if (by1 - by0) > 0.85 * H and (bx1 - bx0) > 0.7 * W:
+        return None
+
+    # Locate the domino tray: search the whole area below the board for
+    # *grey-scale* tile-like components (the dominoes are near-white tiles
+    # with dark pip dots, all grey-scale).  Colourful UI (Photos
+    # thumbnails, accent icons) is excluded by saturation; very wide/thin
+    # UI rules (e.g. a browser URL bar) by aspect ratio.
+    pad = max(20, bh // 6)
+    zy0 = by1 + 5
+    zy1 = H
+    zx0 = 0                              # dominoes often extend wider
+    zx1 = W                              # than the board itself
+    tx0 = tx1 = ty0 = ty1 = None
+    if zy0 < zy1:
+        zone = a[zy0:zy1, zx0:zx1]
+        zmn = zone.min(axis=2)
+        zsat = zone.max(axis=2) - zmn
+        zlab, zn = ndimage.label(zmn < 250)
+        size_lo = 200
+        size_hi = 0.5 * bh * bh
+        keep = []
+        for i in range(1, zn + 1):
+            m = zlab == i
+            cnt = int(m.sum())
+            if not (size_lo < cnt < size_hi):
+                continue
+            if float(zsat[m].mean()) > 30:    # not greyscale -> UI image
+                continue
+            ys, xs = np.where(m)
+            cw = int(xs.max() - xs.min()) + 1
+            ch = int(ys.max() - ys.min()) + 1
+            asp = max(cw, ch) / max(1, min(cw, ch))
+            # a domino tile is ~2:1 (or 1:2 if vertical); reject squares
+            # (UI icons) and very thin bars (URL bars).
+            if not (1.5 <= asp <= 2.5):
+                continue
+            keep.append(i)
+        if keep:
+            # Take only the first y-band (= the tray right below the
+            # board); tile-like things further down belong to app UI.
+            comps = []
+            for i in keep:
+                ys, xs = np.where(zlab == i)
+                comps.append((int(ys.min()), int(ys.max()),
+                              int(xs.min()), int(xs.max())))
+            comps.sort()
+            tile_h = comps[0][1] - comps[0][0] + 1
+            gap = max(40, tile_h)             # tiles in one band sit close
+            band0_top = comps[0][0]
+            band0_bot = comps[0][1]
+            band = [comps[0]]
+            for c in comps[1:]:
+                if c[0] <= band0_bot + gap:
+                    band.append(c)
+                    band0_bot = max(band0_bot, c[1])
+                else:
+                    break
+            ty0 = band0_top + zy0
+            ty1 = band0_bot + zy0
+            tx0 = min(c[2] for c in band) + zx0
+            tx1 = max(c[3] for c in band) + zx0
+    PAD = 24
+    Y0 = max(0, by0 - PAD)
+    Y1 = min(H, (ty1 if ty1 is not None else by1) + PAD)
+    X0 = max(0, min(bx0, tx0 if tx0 is not None else bx0) - PAD)
+    X1 = min(W, max(bx1, tx1 if tx1 is not None else bx1) + PAD)
+    return (X0, Y0, X1, Y1)
+
+
 def _scaled(pitch: int) -> dict:
     """Pixel thresholds that scale with the detected cell pitch.
 
@@ -125,10 +223,13 @@ def _scaled(pitch: int) -> dict:
     p2 = pitch * pitch
     return {
         "tag_min": max(120, int(0.06 * p2)),     # min tag-marker area
+        "tag_max": max(2000, int(0.8 * p2)),     # max single-tag area
+                                                  # (super-blobs above this
+                                                  # are split via erosion)
         "erode_n": max(3, pitch // 8),           # cluster-splitting radius
         "cluster_min": max(400, int(0.18 * p2)),
         "tile_min": max(600, int(0.30 * p2)),    # domino-tile non-bg area
-        "pip_min": max(3, int(p2 / 400.0)),      # one pip-dot area
+        "pip_min": max(3, int(p2 / 500.0)),      # one pip-dot area
         "valley_k": max(5, pitch // 11),         # luminance local-max kernel
         "inner_m": max(3, pitch // 16),          # domino half inner margin
     }
@@ -169,6 +270,10 @@ def parse_screenshot(path: str, debug: bool = False) -> Puzzle:
 
 def parse(path: str, debug: bool = False) -> ParseResult:
     a = np.array(Image.open(path).convert("RGB")).astype(int)
+    bbox = _locate_puzzle(a)
+    if bbox is not None:
+        x0, y0, x1, y1 = bbox
+        a = a[y0:y1, x0:x1]
     H, W, _ = a.shape
     mn = a.min(axis=2)
     sat = a.max(axis=2) - mn
@@ -293,22 +398,65 @@ def parse(path: str, debug: bool = False) -> ParseResult:
     base = (np.mean(free_cols, axis=0) if free_cols
             else np.array([220.0, 204.0, 196.0]))
 
+    # Tag detection.  Normally each tag is its own connected component
+    # of saturated pixels, but at small (mobile) scales a tag can get
+    # pixel-connected to its region's dashed border and gluing several
+    # tags into one super-blob.  We split such super-blobs by filling
+    # the glyph holes (closing), eroding to break thin connections
+    # between tags, and re-growing each seed inside its own bbox.
     rec = GlyphRecognizer()
-    tlab, tn = ndimage.label((sat > TAG_SAT) & board)
+    sat_mask = (sat > TAG_SAT) & board
+    tlab, tn = ndimage.label(sat_mask)
+
+    def _tag_candidates_from_super(blob: np.ndarray):
+        K = max(7, pitch // 10)
+        closed = ndimage.binary_closing(blob, structure=np.ones((K, K)))
+        E = max(3, pitch // 22)
+        seeds = ndimage.binary_erosion(closed, iterations=E)
+        sl, sn_ = ndimage.label(seeds)
+        for sid in range(1, sn_ + 1):
+            seed = sl == sid
+            ys_, xs_ = np.where(seed)
+            if ys_.size < max(40, th["tag_min"] // 10):
+                continue
+            sy0, sy1, sx0, sx1 = ys_.min(), ys_.max(), xs_.min(), xs_.max()
+            ipad = E + 14                # generous box so the tag's
+            Y0 = max(0, sy0 - ipad)       # full body (and glyph) survive
+            Y1 = min(H, sy1 + ipad + 1)
+            X0 = max(0, sx0 - ipad)
+            X1 = min(W, sx1 + ipad + 1)
+            local = np.zeros_like(blob)
+            local[Y0:Y1, X0:X1] = True
+            grown = ndimage.binary_dilation(seed, iterations=E + 2)
+            yield grown & sat_mask & local
+
     found = []  # (constraint, solid_colour, (cx, cy), bbox)
     for t in range(1, tn + 1):
-        tys, txs = np.where(tlab == t)
-        if tys.size < th["tag_min"]:
+        blob = tlab == t
+        sz = int(blob.sum())
+        if sz < th["tag_min"]:
             continue
-        ty0, ty1, tx0, tx1 = tys.min(), tys.max(), txs.min(), txs.max()
-        pad = 4
-        Y0, Y1 = max(0, ty0 - pad), min(H, ty1 + pad + 1)
-        X0, X1 = max(0, tx0 - pad), min(W, tx1 + pad + 1)
-        cons = rec.recognize(
-            isolate_glyph(a[Y0:Y1, X0:X1], tlab[Y0:Y1, X0:X1] == t))
-        solid = np.median(a[tlab == t], axis=0)
-        found.append((cons, solid, (txs.mean(), tys.mean()),
-                      (tx0, ty0, tx1, ty1)))
+        masks = ([blob] if sz <= th["tag_max"]
+                 else list(_tag_candidates_from_super(blob)))
+        for tag_mask in masks:
+            tys, txs = np.where(tag_mask)
+            if not (th["tag_min"] <= tys.size <= th["tag_max"]):
+                continue
+            ty0, ty1 = int(tys.min()), int(tys.max())
+            tx0, tx1 = int(txs.min()), int(txs.max())
+            tw, td = tx1 - tx0 + 1, ty1 - ty0 + 1
+            if max(tw, td) > 2.2 * min(tw, td):
+                continue
+            pad = 4
+            Y0c = max(0, ty0 - pad); Y1c = min(H, ty1 + pad + 1)
+            X0c = max(0, tx0 - pad); X1c = min(W, tx1 + pad + 1)
+            cons = rec.recognize(isolate_glyph(
+                a[Y0c:Y1c, X0c:X1c], tag_mask[Y0c:Y1c, X0c:X1c]))
+            if cons.kind is ConstraintKind.NONE:
+                continue                  # empty-glyph -> not a real tag
+            solid = np.median(a[tag_mask], axis=0)
+            found.append((cons, solid, (txs.mean(), tys.mean()),
+                          (tx0, ty0, tx1, ty1)))
 
     # Optimal tag<->region assignment.  Cost combines the colour residual
     # to the [beige, tag] blend line with the spatial gap from the tag to

@@ -80,6 +80,28 @@
       (and the thin inter-cell gaps), so cluster IDs always come from a
       cell-bearing core. A cell tile is ~80 px on a side and easily
       survives the erosion.</p>
+    <h3>Phone screenshots wrap the puzzle in app chrome</h3>
+    <p><strong>Problem:</strong> a phone screenshot is not just the puzzle
+      &mdash; it&rsquo;s a status bar, a browser header, the puzzle, a URL
+      bar, app icons, etc., all stacked vertically.  Tile-like UI
+      elements (a Photos thumbnail strip, a URL pill) look superficially
+      like dominoes; at the smaller mobile rendering scale a constraint
+      tag can also become pixel-connected to its region&rsquo;s dashed
+      border, gluing several tags into one super-blob.</p>
+    <p><strong>Solution:</strong> a one-shot <em>puzzle locator</em> runs
+      first: it finds the warm-beige board container, then searches
+      below it for a band of grey-scale tile components with the right
+      ~2:1 domino aspect ratio, taking just the first band so app
+      toolbars and thumbnails below the tray are left out.  The image is
+      cropped to that bounding box before the rest of the pipeline
+      runs.  When a saturated tag-detection blob exceeds a single
+      tag&rsquo;s area, it&rsquo;s split via closing-then-erosion so each
+      tag is recovered as its own seed, dilated back inside its own
+      bbox so it can&rsquo;t bleed into a merged neighbour. All
+      remaining pixel thresholds (tag area, pip area, erosion radius,
+      tile area) scale with the detected cell pitch, so the same code
+      handles desktop pitches around 100&nbsp;px and phone pitches that
+      can drop below 60&nbsp;px.</p>
     <p>The same approach also forces the pitch-detection autocorrelation
       to prefer the <em>fundamental</em> period rather than a harmonic:
       the smallest lag whose autocorrelation is within 80% of the peak
@@ -189,6 +211,9 @@
           <td>11</td><td>verified energy&nbsp;0</td></tr>
         <tr><td>Hard &middot; Day&nbsp;3</td><td>30</td><td>15</td>
           <td>12</td><td>verified energy&nbsp;0</td></tr>
+        <tr><td>Mobile screenshots (3)</td><td>10/14/30</td>
+          <td>5/7/15</td><td>6/8/12</td>
+          <td>verified energy&nbsp;0</td></tr>
       </tbody>
     </table>
     <p>Each is parsed exactly &mdash; board shape, every constraint,

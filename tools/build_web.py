@@ -17,7 +17,8 @@ PKG_FILES = [
 ]
 PUZZLES = ["easy-example.png", "medium-example.png",
            "hard-example.png", "hard-example-2.png",
-           "hard-example-3.png"]
+           "hard-example-3.png",
+           "mobile-easy.png", "mobile-medium.png", "mobile-hard.png"]
 
 
 def main() -> None:

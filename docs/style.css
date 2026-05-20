@@ -20,6 +20,7 @@ main{max-width:1100px;margin:0 auto;padding:12px 20px 40px}
   letter-spacing:.06em;color:var(--muted)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .daily{margin:0 0 6px;color:var(--muted)}
+.muted{color:var(--muted);margin-right:4px}
 button,.filebtn{
   font:inherit;border:1px solid var(--line);background:#fbf9f6;
   color:var(--ink);padding:9px 16px;border-radius:9px;cursor:pointer;

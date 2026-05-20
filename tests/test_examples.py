@@ -138,6 +138,29 @@ def test_solve(case):
     verify_solution(p, sol)
 
 
+MOBILE_PUZZLES = [
+    ("mobile-easy", "mobile-easy.png"),
+    ("mobile-medium", "mobile-medium.png"),
+    ("mobile-hard", "mobile-hard.png"),
+]
+
+
+@pytest.mark.parametrize("name,path", MOBILE_PUZZLES,
+                         ids=[n for n, _ in MOBILE_PUZZLES])
+def test_mobile_pipeline(name, path):
+    """Phone screenshots (with surrounding app/browser chrome) survive
+    the puzzle-locator, parse to a complete board, and produce an
+    independently-verified energy-0 solution.
+    Exact constraint multisets aren't asserted because some tags can
+    be rendered at very small scale inside nested app screenshots."""
+    p = parse_screenshot(_shot(path))
+    assert len(p.cells) == 2 * len(p.dominoes)
+    sol = solve(p)
+    assert sol is not None
+    assert sol.energy == 0
+    verify_solution(p, sol)
+
+
 @pytest.mark.parametrize("case", ALL, ids=IDS)
 def test_layout(case):
     from pips.render import solution_layout

@@ -1,0 +1,46 @@
+[
+  {
+    "src": "01-original.png",
+    "caption": "Step 1 \u2014 the original screenshot, as the parser first sees it."
+  },
+  {
+    "src": "02-locator.png",
+    "caption": "Step 2 \u2014 the puzzle-locator. A warm-beige board container is detected (purple rectangle); the horizontal separator rule (line) divides board from domino tray."
+  },
+  {
+    "src": "03-lattice.png",
+    "caption": "Step 3 \u2014 the cell lattice. Cell pitch is recovered from the autocorrelation of inter-cell brightness valleys, then the grid phase is locked by sliding it to maximise tile coverage. Each solid square is a detected cell, with a dot at its centre."
+  },
+  {
+    "src": "04-regions.png",
+    "caption": "Step 4 \u2014 region segmentation. Orthogonally-adjacent cells of near-equal colour are merged into one region; the letter marks distinct regions."
+  },
+  {
+    "src": "05-tags.png",
+    "caption": "Step 5 \u2014 constraint tags. Saturated diamonds carry a white-on-colour glyph; that glyph is isolated, split into characters and matched against a small template library. Each tag is then Hungarian-assigned to its region."
+  },
+  {
+    "src": "06-dominoes.png",
+    "caption": "Step 6 \u2014 the tray. Each domino tile is detected as a near-white rounded rectangle; the tile is split in two and the dark pip blobs counted on each half."
+  },
+  {
+    "src": "07-solver-00.svg",
+    "caption": "Step 7 \u2014 energy-model solver: 0 of 4 dominoes placed. The solver walks tilings depth-first, pruning the instant any region's per-region energy lower bound exceeds zero."
+  },
+  {
+    "src": "07-solver-01.svg",
+    "caption": "Step 7 \u2014 energy-model solver: 1 of 4 dominoes placed. The solver walks tilings depth-first, pruning the instant any region's per-region energy lower bound exceeds zero."
+  },
+  {
+    "src": "07-solver-02.svg",
+    "caption": "Step 7 \u2014 energy-model solver: 2 of 4 dominoes placed. The solver walks tilings depth-first, pruning the instant any region's per-region energy lower bound exceeds zero."
+  },
+  {
+    "src": "07-solver-03.svg",
+    "caption": "Step 7 \u2014 energy-model solver: 3 of 4 dominoes placed. The solver walks tilings depth-first, pruning the instant any region's per-region energy lower bound exceeds zero."
+  },
+  {
+    "src": "07-solver-04.svg",
+    "caption": "Step 7 \u2014 energy-model solver: 4 of 4 dominoes placed. The solver walks tilings depth-first, pruning the instant any region's per-region energy lower bound exceeds zero."
+  }
+]

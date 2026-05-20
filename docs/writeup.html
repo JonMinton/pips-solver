@@ -305,6 +305,26 @@
   </section>
 
   <section class="card">
+    <h2>A step-by-step walkthrough</h2>
+    <p>Below is the <em>easy</em> puzzle taken through every stage of
+      the pipeline. Drag the slider (or use the buttons) to step
+      through. The first six steps are overlays on the original
+      screenshot; the last few are the energy-model solver placing
+      one domino at a time.</p>
+    <div id="wt-frame">
+      <img id="wt-img" alt="walkthrough step"
+        style="max-width:100%;border-radius:8px;background:#faf8f5">
+    </div>
+    <div id="wt-ctrls" class="playctl" style="margin-top:10px">
+      <button id="wt-prev">&larr; Prev</button>
+      <input id="wt-slider" type="range" min="0" max="0" value="0">
+      <button id="wt-next">Next &rarr;</button>
+      <span class="muted">step <b id="wt-step">1 / 1</b></span>
+    </div>
+    <p id="wt-caption" class="muted" style="margin-top:10px"></p>
+  </section>
+
+  <section class="card">
     <h2>Where it stands</h2>
     <table>
       <thead><tr><th>Puzzle</th><th>Cells</th><th>Dominoes</th>
@@ -340,5 +360,30 @@
      rel="noopener">source on GitHub</a> &middot;
   <a href="index.html">try the solver</a>
 </footer>
+<script>
+(async () => {
+  const m = await (await fetch("walkthrough/easy/manifest.json")).json();
+  const img = document.getElementById("wt-img");
+  const cap = document.getElementById("wt-caption");
+  const sl = document.getElementById("wt-slider");
+  const step = document.getElementById("wt-step");
+  sl.max = m.length - 1;
+  let i = 0;
+  function render() {
+    img.src = "walkthrough/easy/" + m[i].src;
+    cap.textContent = m[i].caption;
+    step.textContent = (i + 1) + " / " + m.length;
+    sl.value = i;
+  }
+  document.getElementById("wt-prev").addEventListener(
+    "click", () => { i = Math.max(0, i - 1); render(); });
+  document.getElementById("wt-next").addEventListener(
+    "click", () => { i = Math.min(m.length - 1, i + 1); render(); });
+  sl.addEventListener("input", (ev) => {
+    i = parseInt(ev.target.value, 10); render();
+  });
+  render();
+})();
+</script>
 </body>
 </html>

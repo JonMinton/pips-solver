@@ -222,7 +222,12 @@ function showSolution(res) {
   $("parsed").textContent = res.parsed;
   $("solution").textContent = res.solution;
   try {
-    $("svgwrap").innerHTML = buildSVG(res.layout);
+    _playLayout = res.layout;
+    _playCount = totalPlacements(res.layout);   // full board to start
+    stopPlayback();
+    renderPlayback();
+    $("playslider").max = totalPlacements(res.layout);
+    $("playcontrols").classList.remove("hidden");
     $("lh").textContent = res.layout.n_h;
     $("lv").textContent = res.layout.n_v;
     $("legend").classList.remove("hidden");
@@ -310,9 +315,13 @@ async function solveFromReview() {
   }
 }
 
-function buildSVG(layout) {
+function buildSVG(layout, opts = {}) {
   const CS = 46, INS = 5, PAD = 14, GY = 26;
   const H_COL = "#2f6f9f", V_COL = "#c8762a";
+  // when opts.count is set, only the first `count` placements (across all
+  // clusters in layout order) are drawn — used by the playback animation.
+  const limit = (opts.count === undefined) ? Infinity : opts.count;
+
   let totalW = 0, totalH = PAD;
   const offsets = [];
   for (const cl of layout.clusters) {
@@ -329,6 +338,7 @@ function buildSVG(layout) {
     `xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,` +
     `Menlo,Consolas,monospace">`];
 
+  let placed = 0;
   layout.clusters.forEach((cl, ci) => {
     const oy = offsets[ci];
     const cx = (c) => PAD + (c - cl.minc) * CS;
@@ -343,6 +353,8 @@ function buildSVG(layout) {
     }
 
     for (const p of cl.placements) {
+      if (placed >= limit) break;
+      placed++;
       const horiz = p.orient === "H";
       const r0 = Math.min(p.a[0], p.b[0]), c0 = Math.min(p.a[1], p.b[1]);
       const x = cx(c0) + INS, y = cy(r0) + INS;
@@ -372,6 +384,38 @@ function buildSVG(layout) {
   return parts.join("");
 }
 
+function totalPlacements(layout) {
+  let n = 0;
+  for (const cl of layout.clusters) n += cl.placements.length;
+  return n;
+}
+
+let _playTimer = null;
+let _playLayout = null;
+let _playCount = 0;
+function stopPlayback() {
+  if (_playTimer) { clearInterval(_playTimer); _playTimer = null; }
+  $("playbtn").textContent = "▶ Play";
+}
+function renderPlayback() {
+  if (!_playLayout) return;
+  $("svgwrap").innerHTML = buildSVG(_playLayout, { count: _playCount });
+  const n = totalPlacements(_playLayout);
+  $("playstep").textContent = _playCount + " / " + n;
+  $("playslider").value = _playCount;
+}
+function startPlayback() {
+  if (!_playLayout) return;
+  const n = totalPlacements(_playLayout);
+  if (_playCount >= n) _playCount = 0;
+  $("playbtn").textContent = "⏸ Pause";
+  _playTimer = setInterval(() => {
+    _playCount += 1;
+    renderPlayback();
+    if (_playCount >= n) stopPlayback();
+  }, 380);
+}
+
 async function loadFromFetch(path) {
   setStatus("Fetching " + path + " …");
   const buf = await (await fetch(path)).arrayBuffer();
@@ -394,6 +438,20 @@ $("file").addEventListener("change", async (ev) => {
   await solveBytes(u8, f.type);
 });
 
+$("playbtn").addEventListener("click", () => {
+  if (_playTimer) stopPlayback();
+  else startPlayback();
+});
+$("playreset").addEventListener("click", () => {
+  stopPlayback();
+  _playCount = 0;
+  renderPlayback();
+});
+$("playslider").addEventListener("input", (ev) => {
+  stopPlayback();
+  _playCount = parseInt(ev.target.value, 10);
+  renderPlayback();
+});
 $("review-solve").addEventListener("click", solveFromReview);
 $("review-cancel").addEventListener("click", () => {
   if (lastStructure) populateReview(lastStructure, []); // discard edits

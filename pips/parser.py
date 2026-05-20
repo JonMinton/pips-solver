@@ -269,8 +269,13 @@ def _parse_dominoes(a: np.ndarray, s: int, pitch: int):
             borderline[hi] = int(sum(1 for v in psz
                                      if 0.5 * pmin < v <= 1.5 * pmin))
         dominoes.append((counts[0], counts[1]))
-        confidences.append({"borderline_a": borderline[0],
-                            "borderline_b": borderline[1]})
+        confidences.append({
+            "borderline_a": borderline[0],
+            "borderline_b": borderline[1],
+            # bbox in *cropped image* coordinates (y0/y1 add the tray offset)
+            "bbox": (int(x0), int(y0) + s + 3,
+                     int(x1), int(y1) + s + 3),
+        })
     return dominoes, confidences
 
 
@@ -280,9 +285,9 @@ def parse_screenshot(path: str, debug: bool = False) -> Puzzle:
 
 def parse(path: str, debug: bool = False) -> ParseResult:
     a = np.array(Image.open(path).convert("RGB")).astype(int)
-    bbox = _locate_puzzle(a)
-    if bbox is not None:
-        x0, y0, x1, y1 = bbox
+    crop_bbox = _locate_puzzle(a)
+    if crop_bbox is not None:
+        x0, y0, x1, y1 = crop_bbox
         a = a[y0:y1, x0:x1]
     H, W, _ = a.shape
     mn = a.min(axis=2)
@@ -535,5 +540,7 @@ def parse(path: str, debug: bool = False) -> ParseResult:
                n_free=len(free), n_regions=len(rids),
                ascii=render_puzzle(puzzle),
                region_conf=region_conf, domino_conf=domino_conf,
-               cell_conf=cell_conf)
+               cell_conf=cell_conf,
+               crop_bbox=crop_bbox,           # in original-image coords
+               cell_xy=dict(xy))              # cell -> (cx, cy) in crop coords
     return ParseResult(puzzle=puzzle, debug=dbg)

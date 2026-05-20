@@ -223,11 +223,13 @@ function showSolution(res) {
   $("solution").textContent = res.solution;
   try {
     _playLayout = res.layout;
+    _progressStats = progressStats(res.layout);
     _playCount = totalPlacements(res.layout);   // full board to start
     stopPlayback();
     renderPlayback();
     $("playslider").max = totalPlacements(res.layout);
     $("playcontrols").classList.remove("hidden");
+    $("progress-chart").classList.remove("hidden");
     $("lh").textContent = res.layout.n_h;
     $("lv").textContent = res.layout.n_v;
     $("legend").classList.remove("hidden");
@@ -390,6 +392,79 @@ function totalPlacements(layout) {
   return n;
 }
 
+function progressStats(layout) {
+  // collect placements in playback order; record, after each step, how
+  // many regions have *all* their cells covered (= satisfied since the
+  // solver only commits to feasible placements).
+  const placements = [];
+  for (const cl of layout.clusters) for (const p of cl.placements) placements.push(p);
+  const regionCells = new Map();
+  for (const cl of layout.clusters) {
+    for (const cell of cl.cells) {
+      const k = cell.region;
+      if (!regionCells.has(k)) regionCells.set(k, []);
+      regionCells.get(k).push(`${cell.r}_${cell.c}`);
+    }
+  }
+  const totalRegions = regionCells.size;
+  const covered = new Set();
+  const stats = [];
+  for (let n = 0; n <= placements.length; n++) {
+    let satisfied = 0;
+    for (const cells of regionCells.values()) {
+      if (cells.every((id) => covered.has(id))) satisfied++;
+    }
+    stats.push({ step: n, satisfied, covered: covered.size });
+    if (n < placements.length) {
+      const p = placements[n];
+      covered.add(`${p.a[0]}_${p.a[1]}`);
+      covered.add(`${p.b[0]}_${p.b[1]}`);
+    }
+  }
+  return { stats, totalRegions, totalCells: covered.size };
+}
+
+function buildProgressChart(stats, totalRegions, currentStep) {
+  const W = 340, H = 90, PAD = 22;
+  const maxN = stats.stats.length - 1;
+  const px = (i) => PAD + (i / Math.max(1, maxN)) * (W - 2 * PAD);
+  const py = (v) => H - PAD -
+    (v / Math.max(1, totalRegions)) * (H - 2 * PAD);
+  let poly = "";
+  for (let i = 0; i < stats.stats.length; i++)
+    poly += (i ? " " : "") + px(i) + "," + py(stats.stats[i].satisfied);
+  const cx = px(currentStep);
+  const cv = stats.stats[currentStep].satisfied;
+  const cy = py(cv);
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" ` +
+    `font-family="ui-monospace,Menlo,monospace" font-size="11" ` +
+    `fill="#5a3d86">` +
+    // y-axis labels
+    `<text x="2" y="${py(0) + 3}" fill="#7a7068">0</text>` +
+    `<text x="2" y="${py(totalRegions) + 3}" fill="#7a7068">${totalRegions}</text>` +
+    `<text x="${W/2}" y="${H - 3}" text-anchor="middle" ` +
+    `fill="#7a7068">dominoes placed →</text>` +
+    `<text transform="rotate(-90 12 ${H/2})" x="12" y="${H/2}" ` +
+    `text-anchor="middle" fill="#7a7068">regions satisfied</text>` +
+    // axes
+    `<line x1="${PAD}" y1="${py(0)}" x2="${W - PAD}" y2="${py(0)}" ` +
+    `stroke="#e3ddd5"/>` +
+    `<line x1="${PAD}" y1="${py(0)}" x2="${PAD}" y2="${py(totalRegions)}" ` +
+    `stroke="#e3ddd5"/>` +
+    // data line
+    `<polyline points="${poly}" fill="none" stroke="#7a4fb0" ` +
+    `stroke-width="2"/>` +
+    // current-step marker
+    `<line x1="${cx}" y1="${py(0)}" x2="${cx}" y2="${py(totalRegions)}" ` +
+    `stroke="#d68b00" stroke-dasharray="3 3"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="4" fill="#d68b00"/>` +
+    `<text x="${cx + 6}" y="${cy - 6}" fill="#a06400">` +
+    `${cv}/${totalRegions}</text>` +
+    "</svg>";
+}
+
+let _progressStats = null;
+
 let _playTimer = null;
 let _playLayout = null;
 let _playCount = 0;
@@ -403,6 +478,10 @@ function renderPlayback() {
   const n = totalPlacements(_playLayout);
   $("playstep").textContent = _playCount + " / " + n;
   $("playslider").value = _playCount;
+  if (_progressStats) {
+    $("progress-chart").innerHTML = buildProgressChart(
+      _progressStats, _progressStats.totalRegions, _playCount);
+  }
 }
 function startPlayback() {
   if (!_playLayout) return;

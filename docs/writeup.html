@@ -13,7 +13,10 @@
     <a href="index.html">Pips Solver</a>, and how each was solved &mdash;
     the image parser first, then the energy-model solver, then getting it
     all to run in a browser.</p>
-  <nav class="nav"><a href="index.html">&larr; back to the solver</a></nav>
+  <nav class="nav">
+    <a href="index.html">&larr; the auto-solver</a> &middot;
+    <a href="play.html">be the solver yourself &rarr;</a>
+  </nav>
 </header>
 
 <main class="prose">
@@ -173,6 +176,29 @@
       orthogonally adjacent, the domino multiset used exactly, and every
       constraint satisfied at energy&nbsp;0. Nothing is reported as
       &ldquo;solved&rdquo; unless it passes that.</p>
+    <h3>What &ldquo;backtracking with admissible pruning&rdquo; actually
+      does</h3>
+    <p>The solver is doing a depth-first traversal of a search tree. The
+      root is an empty board; each node is a partial board state; each
+      edge is &ldquo;try this domino in this orientation, with these two
+      cells&rdquo;; a leaf is either a fully-tiled board (a candidate
+      solution) or a dead end. Naively this tree is astronomical
+      &mdash; for a 28-cell hard puzzle the unrestricted branching
+      factor is in the dozens at every step, so the leaves number in
+      the trillions.</p>
+    <p>What keeps it tractable is the per-region energy bound: every
+      time a domino is placed, each touched region&rsquo;s lower bound
+      on its eventual energy is recomputed; if that bound is already
+      above zero, the whole subtree below this node cannot reach
+      energy&nbsp;0 and we don&rsquo;t explore it. For the easy puzzle
+      pruning is so aggressive that no backtracking happens at all
+      &mdash; the path is essentially straight. For the hard puzzles
+      it&rsquo;s the difference between &ldquo;a few milliseconds&rdquo;
+      and &ldquo;will not finish in the age of the universe.&rdquo;
+      The path the solver actually commits to is exactly the sequence
+      of placements you see when you press
+      <a href="index.html#solver-playback">Play</a> on the solver
+      view.</p>
   </section>
 
   <section class="card">

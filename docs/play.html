@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pips — Be the Solver</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Be&nbsp;the&nbsp;Solver</h1>
+  <p class="sub">Place the dominoes yourself. The energy chart on the
+    right counts how many constraints you&rsquo;re currently breaking
+    &mdash; your goal is to drive it to zero by the time all dominoes
+    are down. (Same energy model the auto-solver uses.)</p>
+  <nav class="nav">
+    <a href="index.html">&larr; the auto-solver</a>
+    &middot;
+    <a href="writeup.html">how it all works</a>
+  </nav>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1 &middot; Pick a puzzle</h2>
+    <div class="row">
+      <button class="puz" data-file="easy-example.png" disabled>Easy</button>
+      <button class="puz" data-file="medium-example.png" disabled>Medium</button>
+      <button class="puz" data-file="hard-example.png" disabled>Hard</button>
+    </div>
+    <p id="status" class="muted">Loading Python runtime &hellip;</p>
+  </section>
+
+  <section class="card hidden" id="game">
+    <h2>2 &middot; Your moves</h2>
+    <div class="row playctl">
+      <span class="muted">orientation:</span>
+      <button id="orient-h" class="primary">— horizontal</button>
+      <button id="orient-v">| vertical</button>
+      <span class="muted" style="margin-left:auto"></span>
+      <button id="undo">↶ Undo</button>
+      <button id="reset">↺ Reset</button>
+      <button id="solve-me">Solve for me</button>
+    </div>
+    <p class="muted" id="instructions">
+      Click a domino in the palette, then click the cell you want it to
+      occupy first &mdash; it will fill that cell and the next one in
+      your selected direction.
+    </p>
+
+    <div class="play-grid">
+      <div>
+        <h3 class="rev-h3">Board</h3>
+        <div id="board-wrap"></div>
+      </div>
+      <div>
+        <h3 class="rev-h3">Energy</h3>
+        <div id="energy-chart"></div>
+        <h3 class="rev-h3">Regions</h3>
+        <div id="region-status"></div>
+      </div>
+    </div>
+
+    <h3 class="rev-h3">Dominoes remaining (click to select)</h3>
+    <div id="palette"></div>
+    <p id="game-msg" class="muted"></p>
+  </section>
+</main>
+
+<footer>
+  <a href="https://github.com/JonMinton/pips-solver" target="_blank"
+     rel="noopener">source</a> &middot;
+  <a href="index.html">auto-solver</a> &middot;
+  <a href="writeup.html">how it works</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="play.js"></script>
+</body>
+</html>

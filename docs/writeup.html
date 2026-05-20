@@ -196,6 +196,115 @@
   </section>
 
   <section class="card">
+    <h2>Part 4 &middot; When the parser isn&rsquo;t sure</h2>
+
+    <h3>Why a review step is needed</h3>
+    <p><strong>Problem:</strong> the classical-CV pipeline is right almost
+      all the time, but at small renderings (a phone screenshot of a
+      screenshot, say) a tag glyph can occasionally be mis-classified
+      &mdash; the dashed boundaries are thicker relative to the
+      character strokes, one bar of an <code>=</code> bleeds into the
+      tag edge, and the runner-up template wins by a hair. Solving
+      against a wrong constraint silently gives the wrong answer, with
+      no signal to the user that anything is off.</p>
+    <p><strong>Solution:</strong> the parser already carries soft
+      signals at every stage; it just wasn&rsquo;t surfacing them. The
+      Help-Me mode keeps every per-item confidence score and, when any
+      one of them falls below a threshold, the app pauses before
+      solving and shows a Review panel where every parsed value
+      &mdash; constraints, dominoes, even the cell-to-region
+      assignments &mdash; is editable. The user confirms or corrects,
+      hits <b>Solve</b>, and the corrected puzzle is solved by the
+      same energy-model solver, bypassing the parser so the fixes
+      always stick.</p>
+
+    <h3>What &ldquo;low confidence&rdquo; means here</h3>
+    <p>Each item gets its own kind of confidence signal &mdash; whatever
+      the relevant stage of the pipeline already computes:</p>
+    <table>
+      <thead><tr><th>Item</th><th>Signal</th>
+        <th>What it&rsquo;s telling us</th></tr></thead>
+      <tbody>
+        <tr><td>Region (constraint tag)</td>
+          <td>best template match <em>score</em>,
+            and the <em>margin</em> to the runner-up template</td>
+          <td>how cleanly the glyph matched one character; a close
+            runner-up means &ldquo;could equally be that&rdquo;</td></tr>
+        <tr><td>Region (matching)</td>
+          <td>Hungarian assignment <em>cost</em>
+            (colour-blend residual + spatial gap)</td>
+          <td>how well this tag actually fits to its region by colour
+            and proximity; a high cost suggests we ended up with the
+            tag for the wrong region</td></tr>
+        <tr><td>Domino</td>
+          <td>count of pip-blob candidates whose pixel area sits between
+            half and one-and-a-half times the threshold</td>
+          <td>any borderline blob means the parsed count could be off
+            by one in either direction</td></tr>
+        <tr><td>Cell</td>
+          <td>slot <em>coverage</em>: fraction of the lattice slot
+            occupied by a single uniform tile colour</td>
+          <td>coverage just above the existence threshold (0.60) is a
+            cell only barely; might be a phantom slot near a board
+            edge</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Why these thresholds</h3>
+    <p>The thresholds were not picked theoretically &mdash; they came from
+      looking at the empirical distribution of each signal across all
+      the puzzles in the test set, and choosing the gap between
+      &ldquo;every correctly-parsed item&rdquo; and
+      &ldquo;the few known mis-reads&rdquo;:</p>
+    <table>
+      <thead><tr><th>Signal</th><th>Threshold</th>
+        <th>Observed range (correct)</th>
+        <th>Observed (mis-read)</th></tr></thead>
+      <tbody>
+        <tr><td>glyph score</td><td><code>&lt; 0.85</code></td>
+          <td>0.92 &ndash; 1.00</td>
+          <td><b>0.732</b>, <b>0.696</b></td></tr>
+        <tr><td>glyph margin to runner-up</td><td><code>&lt; 0.06</code></td>
+          <td>0.09 &ndash; 0.36</td>
+          <td><b>0.051</b>, <b>0.015</b></td></tr>
+        <tr><td>tag&ndash;region cost</td><td><code>&gt; 32</code></td>
+          <td>typically 7 &ndash; 28</td>
+          <td>(no observed mis-match yet; bound set well above the
+            highest correct value)</td></tr>
+        <tr><td>borderline pip blobs</td><td><code>&ge; 1</code></td>
+          <td>0 on every parsed domino in the test set</td>
+          <td>any non-zero count means the count could be off</td></tr>
+        <tr><td>cell coverage</td><td><code>&lt; 0.70</code></td>
+          <td>0.85 &ndash; 1.00 on real cells</td>
+          <td>just above the 0.60 existence cut-off is the danger
+            zone</td></tr>
+      </tbody>
+    </table>
+    <p>So each threshold sits in the empty band between
+      &ldquo;every correctly-parsed item&rdquo; and any actual mis-read
+      we&rsquo;ve seen &mdash; nothing correct is ever flagged, and the
+      two known mis-classified tags on the mobile screenshots
+      (<code>=</code> read as <code>sum=1</code>; <code>1</code> read as
+      <code>&ne;</code>) are flagged loudly. If a future puzzle adds a
+      new mis-read we&rsquo;ll know exactly where in the table the new
+      data point lands, and whether the bands need re-tuning.</p>
+
+    <h3>What gets edited, and what re-solves</h3>
+    <p>The review panel makes <em>every</em> parsed item editable, not
+      just the flagged ones &mdash; the parser is occasionally
+      confidently wrong, and the review step is the only place to fix
+      that. Constraints get a kind dropdown plus a target field;
+      dominoes have two pip inputs; each board cell is a coloured
+      button, click cycles it through regions and right-click removes
+      it from the board entirely. Pressing Solve hands the (possibly
+      edited) structure to a separate
+      <code>webapi.solve_structured</code> entry-point that rebuilds
+      the puzzle from JSON and re-solves &mdash; the parser isn&rsquo;t
+      involved at all, so any correction the user makes is the final
+      word.</p>
+  </section>
+
+  <section class="card">
     <h2>Where it stands</h2>
     <table>
       <thead><tr><th>Puzzle</th><th>Cells</th><th>Dominoes</th>

@@ -65,6 +65,25 @@
     </div>
   </section>
 
+  <section class="card hidden" id="review">
+    <h2>2 &middot; Review &mdash; the parser isn&rsquo;t sure</h2>
+    <p id="review-banner" class="muted">
+      One or more items below were recognised with low confidence.
+      Highlighted rows are the suspect ones; you can edit any value,
+      then press <b>Solve</b>.</p>
+    <h3 class="rev-h3">Regions / constraints</h3>
+    <div id="review-regions"></div>
+    <h3 class="rev-h3">Board cells <span class="muted">(click to
+      reassign to next region; right-click to remove)</span></h3>
+    <div id="review-cells"></div>
+    <h3 class="rev-h3">Dominoes</h3>
+    <div id="review-dominoes"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="review-solve" class="primary">Solve with these values</button>
+      <button id="review-cancel">Discard edits</button>
+    </div>
+  </section>
+
   <section class="card">
     <h2>Solution &mdash; graphical</h2>
     <div id="legend" class="legend hidden">

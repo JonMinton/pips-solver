@@ -10,7 +10,9 @@ $("date").textContent = new Date().toLocaleDateString(undefined, {
 
 let pyodide = null;
 let runFn = null;     // Python pips.webapi.run, as a callable PyProxy
+let solveFn = null;   // Python pips.webapi.solve_structured
 let busy = false;
+let lastStructure = null; // last parsed structure (for the review panel)
 
 async function boot() {
   try {
@@ -27,6 +29,8 @@ async function boot() {
     }
     pyodide.runPython("import sys; sys.path.insert(0, '/pkg')");
     runFn = pyodide.runPython("from pips.webapi import run\nrun");
+    solveFn = pyodide.runPython(
+      "from pips.webapi import solve_structured\nsolve_structured");
 
     setStatus("Ready. Pick Easy / Medium / Hard, upload a screenshot, "
       + "or paste an image URL.");
@@ -38,60 +42,271 @@ async function boot() {
   }
 }
 
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+function regionLetter(rid) { return LETTERS[rid % 52]; }
+
+function rgbCss(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+
+function flagsByItem(flags) {
+  const m = { region: new Map(), domino: new Map(), cell: new Map() };
+  for (const f of flags) m[f.kind].set(f.id, f.reasons);
+  return m;
+}
+
+function populateReview(structure, flags) {
+  const byItem = flagsByItem(flags);
+  const KINDS = [
+    ["NONE", "(free)"],
+    ["SUM_EQ", "sum ="],
+    ["SUM_LT", "sum <"],
+    ["SUM_GT", "sum >"],
+    ["ALL_EQUAL", "= (all equal)"],
+    ["ALL_DIFFERENT", "≠ (all different)"],
+  ];
+
+  const rrows = ['<table class="rev"><thead><tr>' +
+    '<th>Region</th><th>Constraint</th><th>Target</th>' +
+    '<th>Why flagged</th></tr></thead><tbody>'];
+  for (const r of structure.regions) {
+    const reasons = byItem.region.get(r.id);
+    const flagged = reasons ? " class='flagged'" : "";
+    const showTarget = ["SUM_EQ", "SUM_LT", "SUM_GT"].includes(r.kind);
+    const opts = KINDS.map(([k, lbl]) =>
+      `<option value="${k}"${k === r.kind ? " selected" : ""}>${lbl}</option>`
+    ).join("");
+    rrows.push(
+      `<tr${flagged} data-rid="${r.id}">` +
+      `<td><span class="swatch" style="background:${rgbCss(r.color)}"></span>` +
+      `${regionLetter(r.id)} <span class="muted">(${r.n_cells} cell${r.n_cells === 1 ? "" : "s"})</span></td>` +
+      `<td><select class="rv-kind">${opts}</select></td>` +
+      `<td><input class="rv-target" type="number" min="0" max="30" ` +
+      `value="${r.target ?? ""}" ${showTarget ? "" : "disabled"}></td>` +
+      `<td class="flag-why">${reasons ? reasons.join("; ") : ""}</td>` +
+      "</tr>");
+  }
+  rrows.push("</tbody></table>");
+  $("review-regions").innerHTML = rrows.join("");
+
+  const droots = [];
+  for (const d of structure.dominoes) {
+    const reasons = byItem.domino.get(d.id);
+    const flagged = reasons ? " flagged" : "";
+    droots.push(
+      `<span class="dom-edit${flagged}" data-id="${d.id}" ` +
+      `title="${reasons ? reasons.join("; ") : ""}">` +
+      `<input class="rv-a" type="number" min="0" max="6" value="${d.a}">` +
+      `<span class="sep">|</span>` +
+      `<input class="rv-b" type="number" min="0" max="6" value="${d.b}">` +
+      "</span>");
+  }
+  $("review-dominoes").innerHTML = droots.join("");
+
+  // working copy of cell edits (only stores the changed fields)
+  workingCells = new Map();
+  for (const c of structure.cells) {
+    workingCells.set(c.id, { rid: c.rid, removed: false });
+  }
+  populateCells(structure, byItem);
+
+  // disable target input when kind isn't a SUM_*
+  for (const sel of document.querySelectorAll("select.rv-kind")) {
+    sel.addEventListener("change", () => {
+      const tgt = sel.closest("tr").querySelector("input.rv-target");
+      tgt.disabled = !["SUM_EQ", "SUM_LT", "SUM_GT"].includes(sel.value);
+    });
+  }
+}
+
+function populateCells(structure, byItem) {
+  const GAP = 1000;
+  const blocks = [];
+  const clusters = {};
+  for (const c of structure.cells) {
+    const k = Math.floor(c.r / GAP);
+    (clusters[k] = clusters[k] || []).push(c);
+  }
+  for (const k of Object.keys(clusters).sort((a, b) => +a - +b)) {
+    const cs = clusters[k];
+    const rs = cs.map((c) => c.r % GAP);
+    const cols = cs.map((c) => c.c);
+    const minR = Math.min(...rs), maxR = Math.max(...rs);
+    const minC = Math.min(...cols), maxC = Math.max(...cols);
+    const cellMap = new Map();
+    for (const c of cs) cellMap.set(`${c.r % GAP}_${c.c}`, c);
+    let html = `<div class="cells-block"><div class="cells-grid" ` +
+      `style="grid-template-columns:repeat(${maxC - minC + 1},32px)">`;
+    for (let r = minR; r <= maxR; r++) {
+      for (let c = minC; c <= maxC; c++) {
+        const cell = cellMap.get(`${r}_${c}`);
+        if (cell) {
+          const reg = structure.regions.find((rr) => rr.id === cell.rid);
+          const color = reg ? rgbCss(reg.color) : "#eee";
+          const flagged = byItem.cell.has(cell.id) ? " flagged" : "";
+          html += `<button class="cell-btn${flagged}" data-id="${cell.id}" ` +
+            `style="background:${color}">${regionLetter(cell.rid)}</button>`;
+        } else {
+          html += '<span></span>';
+        }
+      }
+    }
+    html += "</div></div>";
+    blocks.push(html);
+  }
+  $("review-cells").innerHTML = blocks.join("");
+
+  const rids = structure.regions.map((r) => r.id).sort((a, b) => a - b);
+  for (const btn of document.querySelectorAll(".cell-btn")) {
+    const update = () => {
+      const cell = workingCells.get(btn.dataset.id);
+      if (cell.removed) {
+        btn.classList.add("removed");
+        btn.style.background = "#eee";
+        btn.textContent = "·";
+      } else {
+        btn.classList.remove("removed");
+        const reg = structure.regions.find((rr) => rr.id === cell.rid);
+        btn.style.background = reg ? rgbCss(reg.color) : "#eee";
+        btn.textContent = regionLetter(cell.rid);
+      }
+    };
+    btn.addEventListener("click", (ev) => {
+      const cell = workingCells.get(btn.dataset.id);
+      if (cell.removed) cell.removed = false;
+      else {
+        const idx = rids.indexOf(cell.rid);
+        cell.rid = rids[(idx + 1) % rids.length];
+      }
+      update();
+    });
+    btn.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      const cell = workingCells.get(btn.dataset.id);
+      cell.removed = !cell.removed;
+      update();
+    });
+  }
+}
+
+let workingCells = new Map();
+
+function collectReview() {
+  const out = {
+    cells: lastStructure.cells
+      .map((c) => ({ ...c, ...(workingCells.get(c.id) || {}) }))
+      .filter((c) => !c.removed),
+    regions: [],
+    dominoes: [],
+  };
+  for (const r of lastStructure.regions) {
+    const row = document.querySelector(`tr[data-rid="${r.id}"]`);
+    const kind = row.querySelector("select.rv-kind").value;
+    const targetRaw = row.querySelector("input.rv-target").value;
+    const target = (kind === "SUM_EQ" || kind === "SUM_LT" ||
+      kind === "SUM_GT") && targetRaw !== ""
+      ? parseInt(targetRaw, 10) : null;
+    out.regions.push({ ...r, kind, target });
+  }
+  for (const d of lastStructure.dominoes) {
+    const span = document.querySelector(`.dom-edit[data-id="${d.id}"]`);
+    out.dominoes.push({
+      ...d,
+      a: parseInt(span.querySelector("input.rv-a").value, 10) || 0,
+      b: parseInt(span.querySelector("input.rv-b").value, 10) || 0,
+    });
+  }
+  return out;
+}
+
+function showSolution(res) {
+  $("parsed").textContent = res.parsed;
+  $("solution").textContent = res.solution;
+  try {
+    $("svgwrap").innerHTML = buildSVG(res.layout);
+    $("lh").textContent = res.layout.n_h;
+    $("lv").textContent = res.layout.n_v;
+    $("legend").classList.remove("hidden");
+  } catch (e) {
+    $("svgwrap").innerHTML =
+      '<p class="muted">(graphical view unavailable)</p>';
+    console.error(e);
+  }
+  $("b-parse").textContent = "parse " + (res.parse_ms ?? "—") + " ms";
+  $("b-solve").textContent = "solve " + res.solve_ms + " ms";
+  $("b-grid").textContent =
+    res.n_cells + " cells · " + res.n_dominoes + " dominoes · " +
+    res.n_regions + " regions";
+  const v = $("b-verified");
+  if (res.solved && res.verified) {
+    v.textContent = "solution verified ✓"; v.className = "badge ok";
+  } else if (!res.valid && res.error) {
+    v.textContent = "puzzle invalid: " + res.error; v.className = "badge";
+  } else {
+    v.textContent = res.solved ? "solved (unverified)" : "no solution";
+    v.className = "badge";
+  }
+  $("badges").classList.remove("hidden");
+}
+
 async function solveBytes(u8, previewBlobType) {
   if (!runFn || busy) return;
   busy = true;
   $("badges").classList.add("hidden");
+  $("review").classList.add("hidden");
   try {
     const url = URL.createObjectURL(new Blob([u8], {
       type: previewBlobType || "image/png",
     }));
     $("preview").src = url;
 
-    setStatus("Parsing the screenshot and solving…");
+    setStatus("Parsing the screenshot…");
     $("parsed").textContent = "…";
     $("solution").textContent = "…";
 
     pyodide.FS.writeFile("/tmp/in.png", u8);
-    // run() is synchronous CPU work; yield first so the UI repaints
     await new Promise((r) => setTimeout(r, 30));
 
     const proxy = runFn();
     const res = proxy.toJs({ dict_converter: Object.fromEntries });
     proxy.destroy();
+    lastStructure = res.structure;
 
-    $("parsed").textContent = res.parsed;
-    $("solution").textContent = res.solution;
-    try {
-      $("svgwrap").innerHTML = buildSVG(res.layout);
-      $("lh").textContent = res.layout.n_h;
-      $("lv").textContent = res.layout.n_v;
-      $("legend").classList.remove("hidden");
-    } catch (e) {
-      $("svgwrap").innerHTML =
-        '<p class="muted">(graphical view unavailable)</p>';
-      console.error(e);
-    }
-    $("b-parse").textContent = "parse " + res.parse_ms + " ms";
-    $("b-solve").textContent = "solve " + res.solve_ms + " ms";
-    $("b-grid").textContent =
-      res.n_cells + " cells · " + res.n_dominoes + " dominoes · " +
-      res.n_regions + " regions · " + res.n_clusters + " cluster(s)";
-    const v = $("b-verified");
-    if (res.solved && res.verified) {
-      v.textContent = "solution verified ✓"; v.className = "badge ok";
+    if (res.needs_review) {
+      populateReview(res.structure, res.flags || []);
+      $("review").classList.remove("hidden");
+      $("review").scrollIntoView({ behavior: "smooth", block: "start" });
+      setStatus("Parser flagged " + (res.flags || []).length +
+        " item(s) for review — confirm or correct, then press Solve.");
     } else {
-      v.textContent = res.solved ? "solved (unverified)" : "no solution";
-      v.className = "badge";
+      res.parse_ms = res.parse_ms;
+      showSolution(res);
+      setStatus("Done.");
     }
-    $("badges").classList.remove("hidden");
-    setStatus("Done.");
   } catch (e) {
     setStatus("Error: " + e);
     $("solution").textContent = String(e);
     console.error(e);
   } finally {
     busy = false;
+  }
+}
+
+async function solveFromReview() {
+  if (!solveFn || !lastStructure) return;
+  setStatus("Solving with your confirmed values…");
+  await new Promise((r) => setTimeout(r, 20));
+  try {
+    const edited = collectReview();
+    const proxy = solveFn(pyodide.toPy(edited));
+    const res = proxy.toJs({ dict_converter: Object.fromEntries });
+    proxy.destroy();
+    lastStructure = res.structure;
+    showSolution(res);
+    $("review").classList.add("hidden");
+    setStatus("Done.");
+  } catch (e) {
+    setStatus("Solve failed: " + e);
+    console.error(e);
   }
 }
 
@@ -177,6 +392,11 @@ $("file").addEventListener("change", async (ev) => {
   if (!f) return;
   const u8 = new Uint8Array(await f.arrayBuffer());
   await solveBytes(u8, f.type);
+});
+
+$("review-solve").addEventListener("click", solveFromReview);
+$("review-cancel").addEventListener("click", () => {
+  if (lastStructure) populateReview(lastStructure, []); // discard edits
 });
 
 $("loadurl").addEventListener("click", async () => {

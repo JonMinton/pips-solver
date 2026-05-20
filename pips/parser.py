@@ -235,7 +235,10 @@ def _scaled(pitch: int) -> dict:
     }
 
 
-def _parse_dominoes(a: np.ndarray, s: int, pitch: int) -> List[Tuple[int, int]]:
+def _parse_dominoes(a: np.ndarray, s: int, pitch: int):
+    """Return ``(dominoes, confidences)`` where each confidence entry
+    records how many pip-blob candidates sit close to the size threshold
+    on each half (a non-zero count means the count is borderline)."""
     th = _scaled(pitch)
     tray = a[s + 3:]
     gray = tray.mean(axis=2)
@@ -244,24 +247,31 @@ def _parse_dominoes(a: np.ndarray, s: int, pitch: int) -> List[Tuple[int, int]]:
     tiles = [i + 1 for i, v in enumerate(sizes) if v > th["tile_min"]]
     tiles.sort(key=lambda i: (np.where(lab == i)[1].min()))
     dominoes: List[Tuple[int, int]] = []
+    confidences: List[dict] = []
     for i in tiles:
         ys, xs = np.where(lab == i)
         y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
         sub = gray[y0:y1 + 1, x0:x1 + 1]
         h, w = sub.shape
-        if w >= h:                       # horizontal tile: left | right
+        if w >= h:
             halves = [sub[:, : w // 2], sub[:, w // 2:]]
-        else:                            # vertical tile: top | bottom
+        else:
             halves = [sub[: h // 2, :], sub[h // 2:, :]]
-        counts = []
-        for half in halves:
+        counts: List[int] = []
+        borderline = [0, 0]
+        for hi, half in enumerate(halves):
             m = th["inner_m"]
             inner = half[m:-m, m:-m] if min(half.shape) > 2 * m else half
             pl, pn = ndimage.label(inner < 110)
             psz = ndimage.sum(np.ones_like(pl), pl, range(1, pn + 1))
-            counts.append(int(sum(1 for v in psz if v > th["pip_min"])))
+            pmin = th["pip_min"]
+            counts.append(int(sum(1 for v in psz if v > pmin)))
+            borderline[hi] = int(sum(1 for v in psz
+                                     if 0.5 * pmin < v <= 1.5 * pmin))
         dominoes.append((counts[0], counts[1]))
-    return dominoes
+        confidences.append({"borderline_a": borderline[0],
+                            "borderline_b": borderline[1]})
+    return dominoes, confidences
 
 
 def parse_screenshot(path: str, debug: bool = False) -> Puzzle:
@@ -450,13 +460,13 @@ def parse(path: str, debug: bool = False) -> ParseResult:
             pad = 4
             Y0c = max(0, ty0 - pad); Y1c = min(H, ty1 + pad + 1)
             X0c = max(0, tx0 - pad); X1c = min(W, tx1 + pad + 1)
-            cons = rec.recognize(isolate_glyph(
+            cons, ginfo = rec.recognize(isolate_glyph(
                 a[Y0c:Y1c, X0c:X1c], tag_mask[Y0c:Y1c, X0c:X1c]))
             if cons.kind is ConstraintKind.NONE:
                 continue                  # empty-glyph -> not a real tag
             solid = np.median(a[tag_mask], axis=0)
             found.append((cons, solid, (txs.mean(), tys.mean()),
-                          (tx0, ty0, tx1, ty1)))
+                          (tx0, ty0, tx1, ty1), ginfo))
 
     # Optimal tag<->region assignment.  Cost combines the colour residual
     # to the [beige, tag] blend line with the spatial gap from the tag to
@@ -464,7 +474,7 @@ def parse(path: str, debug: bool = False) -> ParseResult:
     # neighbours; proximity separates regions that share a tag colour.
     constrained = [k for k in rids if k not in free]
     cost = np.full((len(found), len(constrained)), 1e6)
-    for ti, (_, solid, (tcx, tcy), _) in enumerate(found):
+    for ti, (_, solid, (tcx, tcy), _, _) in enumerate(found):
         for ki, k in enumerate(constrained):
             cres = _seg_dist(rep[k], base, solid)
             if cres > COLOR_TOL:
@@ -474,16 +484,28 @@ def parse(path: str, debug: bool = False) -> ParseResult:
             cost[ti, ki] = cres + 10.0 * (d / pitch)
     constraints: Dict[int, Constraint] = {}
     tag_region: Dict[int, int] = {}
+    region_costs: Dict[int, float] = {}
     if found and constrained:
         rows, cidx = linear_sum_assignment(cost)
         for ti, ki in zip(rows, cidx):
             if cost[ti, ki] < 1e6:
                 constraints[constrained[ki]] = found[ti][0]
                 tag_region[ti] = constrained[ki]
+                region_costs[constrained[ki]] = float(cost[ti, ki])
     tag_dbg = [
         (found[ti][3], found[ti][0].describe(), tag_region.get(ti))
         for ti in range(len(found))
     ]
+
+    region_conf: Dict[int, dict] = {}
+    for ti, rid in tag_region.items():
+        ginfo = found[ti][4]
+        region_conf[rid] = {
+            "glyph_score": ginfo["score"],
+            "glyph_margin": ginfo["margin"],
+            "labels": ginfo["labels"],
+            "match_cost": region_costs.get(rid, 0.0),
+        }
 
     regions: Dict[int, Region] = {}
     for k in rids:
@@ -493,13 +515,25 @@ def parse(path: str, debug: bool = False) -> ParseResult:
             color=tuple(int(v) for v in rep[k]),
         )
 
-    dominoes = _parse_dominoes(a, s, pitch)
+    dominoes, domino_conf = _parse_dominoes(a, s, pitch)
     puzzle = Puzzle(cells=cells, region_of=region_of,
                     regions=regions, dominoes=dominoes)
+
+    # also keep slot coverage so callers can flag cells whose coverage
+    # was borderline (close to the _is_cell threshold of 0.60).
+    cell_conf: Dict[Tuple[int, int], float] = {}
+    for (i, j), col in raw.items():
+        # we don't have per-cell coverage cached here; approximate it
+        # by re-sampling the cell centre — cheap and only called once.
+        cx, cy = xy[(i, j)]
+        _, cov, _ = _slot(a, cy, cx, rad)
+        cell_conf[(i, j)] = float(cov)
 
     from .render import render_puzzle
     dbg = dict(separator=s, pitch=pitch, n_clusters=len(clusters),
                tags=tag_dbg, base=tuple(int(v) for v in base),
                n_free=len(free), n_regions=len(rids),
-               ascii=render_puzzle(puzzle))
+               ascii=render_puzzle(puzzle),
+               region_conf=region_conf, domino_conf=domino_conf,
+               cell_conf=cell_conf)
     return ParseResult(puzzle=puzzle, debug=dbg)

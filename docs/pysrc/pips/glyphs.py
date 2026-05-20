@@ -95,26 +95,36 @@ class GlyphRecognizer:
     def __init__(self, templates: Optional[Dict[str, List[np.ndarray]]] = None):
         self.templates = templates if templates is not None else load_templates()
 
-    def classify(self, char: np.ndarray) -> str:
+    def classify(self, char: np.ndarray) -> tuple:
+        """Return ``(label, best_score, second_best_score)``."""
         q = _normalize(char)
-        best, best_name = -1.0, "?"
+        best, best_name, second = -1.0, "?", -1.0
         for name, samples in self.templates.items():
-            for t in samples:
-                score = float((q == t).mean())
-                if score > best:
-                    best, best_name = score, name
-        return best_name
+            local = max(float((q == t).mean()) for t in samples)
+            if local > best:
+                second = best
+                best, best_name = local, name
+            elif local > second:
+                second = local
+        return best_name, best, second
 
-    def recognize(self, glyph: np.ndarray) -> Constraint:
+    def recognize(self, glyph: np.ndarray):
+        """Return ``(Constraint, info)`` where info has ``score`` (the
+        worst per-char template-match score in the glyph) and
+        ``margin`` (the smallest best-vs-runner-up gap)."""
         chars = split_chars(glyph)
         if not chars:
-            return Constraint(ConstraintKind.NONE)
-        labels = [self.classify(c) for c in chars]
+            return Constraint(ConstraintKind.NONE), {"score": 0.0, "margin": 0.0}
+        triples = [self.classify(c) for c in chars]
+        labels = [t[0] for t in triples]
+        score = min(t[1] for t in triples)
+        margin = min(t[1] - t[2] for t in triples)
 
+        info = {"score": score, "margin": margin, "labels": list(labels)}
         if labels == ["="]:
-            return Constraint(ConstraintKind.ALL_EQUAL)
+            return Constraint(ConstraintKind.ALL_EQUAL), info
         if labels == ["!="]:
-            return Constraint(ConstraintKind.ALL_DIFFERENT)
+            return Constraint(ConstraintKind.ALL_DIFFERENT), info
 
         comparator = None
         if labels[0] in ("<", ">"):
@@ -123,14 +133,13 @@ class GlyphRecognizer:
 
         digits = "".join(c for c in labels if c.isdigit())
         if not digits:
-            # a lone "=" rendered as a single fat group, or unknown
-            return Constraint(ConstraintKind.NONE)
+            return Constraint(ConstraintKind.NONE), info
         target = int(digits)
         if comparator == "<":
-            return Constraint(ConstraintKind.SUM_LT, target)
+            return Constraint(ConstraintKind.SUM_LT, target), info
         if comparator == ">":
-            return Constraint(ConstraintKind.SUM_GT, target)
-        return Constraint(ConstraintKind.SUM_EQ, target)
+            return Constraint(ConstraintKind.SUM_GT, target), info
+        return Constraint(ConstraintKind.SUM_EQ, target), info
 
 
 def load_templates() -> Dict[str, List[np.ndarray]]:

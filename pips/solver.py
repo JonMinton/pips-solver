@@ -116,7 +116,7 @@ class _Search:
                 if self.avail[shape] == 0:
                     continue
                 a, b = shape
-                orients = {(a, b), (b, a)}
+                orients = sorted({(a, b), (b, a)})  # deterministic order
                 self.avail[shape] -= 1
                 for va, vb in orients:
                     ok = self._assign(u, va)

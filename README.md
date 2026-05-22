@@ -69,21 +69,37 @@ pip install -r requirements.txt
 python solve.py example-screenshots/easy-example.png --debug
 python solve.py example-screenshots/medium-example.png
 python solve.py example-screenshots/hard-example.png
-pytest -q                       # end-to-end acceptance tests
+pytest -q                       # per-image parser + solver unit tests
+sh tools/install_hooks.sh       # one-off: arm the pre-deploy test gate
 ```
+
+## Tests & the pre-deploy gate
+
+Every example screenshot has two unit tests in `tests/test_examples.py`:
+a **parser test** (exact cell count, domino multiset and region
+constraints) and a **solver test** (an independently-verified energy-0
+solution with the exact solved cell values). The expected output for
+each image is an explicit golden file in `tests/expected/` — regenerate
+with `python tools/build_test_expectations.py` when a behaviour change
+is intentional.
+
+These run automatically **before every deployment**: a push to `origin`
+is what triggers the GitHub Pages build, so the `.githooks/pre-push`
+hook runs `tools/run_pre_deploy_tests.py` first. If any test fails the
+push is blocked, a failure record is written to `test-results/`
+(`latest.md` / `latest.json` plus a timestamped copy) and a summary is
+printed. Arm the hook once per clone with `sh tools/install_hooks.sh`.
 
 ## Status
 
-Validated end to end against five example screenshots —
-easy (8 cells / 4 dominoes), medium (14 / 7), hard (a 7-piece
-disconnected board, 28 / 14, 19 regions), a second hard puzzle
-(2 pieces, 26 / 13), and a third hard puzzle (2 pieces sharing a single
-container rim, 30 / 15, 12 regions). For each one the parser reads the
-exact board, every constraint and every domino, and the solver returns
-an **independently verified** energy-0 solution (`verify_solution`
-re-checks tiling, the domino multiset and all constraints — see
-`tests/test_examples.py`, 15 tests). Solve time is a few milliseconds;
-parsing a screenshot takes a couple of seconds.
+Validated end to end against eight example screenshots — five desktop
+(easy 8 cells/4 dominoes, medium 14/7, hard a 7-piece board 28/14,
+hard·2 26/13, hard·3 30/15) and three phone screenshots
+(mobile easy/medium/hard). For each one the parser reads the board and
+the solver returns an **independently verified** energy-0 solution.
+Two of the mobile images have one constraint tag each that the parser
+reads wrong at very small scale — surfaced live by the app's Help-Me
+review mode and documented in the golden files.
 
 ### Scope / extending
 

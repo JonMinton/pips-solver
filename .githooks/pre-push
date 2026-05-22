@@ -1,0 +1,22 @@
+#!/bin/sh
+# Pre-deploy gate.
+#
+# A push to origin is what triggers the GitHub Pages deployment, so this
+# hook runs the parser + solver unit tests *before* every push.  If any
+# test fails the push is blocked and a failure record is written to
+# test-results/ (see tools/run_pre_deploy_tests.py).
+#
+# Enable with:  sh tools/install_hooks.sh   (sets core.hooksPath)
+# Override once (not recommended):  git push --no-verify
+
+echo "[pre-push] pre-deploy test gate"
+python3 tools/run_pre_deploy_tests.py
+status=$?
+if [ "$status" -ne 0 ]; then
+    echo ""
+    echo "[pre-push] PUSH BLOCKED — unit tests failed."
+    echo "[pre-push] failure record: test-results/latest.md"
+    echo "[pre-push] fix the failures (or, only if you are certain,"
+    echo "[pre-push] bypass with: git push --no-verify)"
+fi
+exit "$status"

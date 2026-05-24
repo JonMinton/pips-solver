@@ -90,6 +90,41 @@ push is blocked, a failure record is written to `test-results/`
 (`latest.md` / `latest.json` plus a timestamped copy) and a summary is
 printed. Arm the hook once per clone with `sh tools/install_hooks.sh`.
 
+## Daily capture (optional macro)
+
+`tools/daily_capture_and_solve.py` is a self-contained Playwright
+script that, run on your machine, opens Chromium against
+`https://www.nytimes.com/games/pips`, clicks each difficulty in turn,
+takes a full-page screenshot, runs the parser+solver on each, and
+writes a per-day JSON report to `test-results/daily/`.
+
+One-time setup:
+
+```bash
+pip install playwright
+python -m playwright install chromium
+python tools/daily_capture_and_solve.py        # *headed* the first time so
+                                                # you can log in if NYT prompts
+```
+
+Subsequent runs (and the launchd job below) use `--headless`. The
+browser profile persists at `.browser-profile/` so the login sticks.
+
+To run automatically once a day on macOS, install the launchd plist:
+
+```bash
+mkdir -p ~/Library/LaunchAgents
+cp tools/launchd/com.jonminton.pips-solver.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.jonminton.pips-solver.daily.plist
+```
+
+The job fires at 09:30 local each day and writes its console output
+to `test-results/daily/launchd.{out,err}`. Edit the `Hour`/`Minute`
+keys in the plist to change the schedule. If NYT redesigns the
+difficulty buttons and the script can't find them, override with
+`--easy`, `--medium`, `--hard` (any Playwright selector — CSS, text=,
+role=, etc.).
+
 ## Status
 
 Validated end to end against eight example screenshots — five desktop

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jonminton.pips-solver.daily</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/JonMinton/repos/pips-solver/tools/daily_capture.sh</string>
+  </array>
+
+  <!-- Fire once a day at 09:30 local. Change Hour/Minute if you want. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+
+  <!-- Skip a run if we missed it (laptop closed), don't queue it up. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Capture stdout/stderr so failures are debuggable later. -->
+  <key>StandardOutPath</key>
+  <string>/Users/JonMinton/repos/pips-solver/test-results/daily/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/JonMinton/repos/pips-solver/test-results/daily/launchd.err</string>
+
+  <!-- Make sure /usr/local/bin and homebrew python are on PATH. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

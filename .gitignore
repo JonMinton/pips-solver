@@ -6,3 +6,5 @@ __pycache__/
 *.egg-info/
 debug-output/
 test-results/
+.browser-profile/
+example-screenshots/daily/
